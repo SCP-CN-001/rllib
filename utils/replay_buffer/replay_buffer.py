@@ -3,17 +3,17 @@ from collections import deque
 import numpy as np
 
 
-class ReplayMemory:
-    def __init__(self, memory_size: int, extra_items: list = []):
+class ReplayBuffer:
+    def __init__(self, buffer_size: int, extra_items: list = []):
         self.items = ["state", "action", "reward", "done"] + extra_items
-        self.memory = {}
+        self.buffer = {}
         for item in self.items:
-            self.memory[item] = deque([], maxlen=memory_size)
+            self.buffer[item] = deque([], maxlen=buffer_size)
     
     def push(self, observations:tuple):
         """Save a transition"""
         for i, item in enumerate(self.items):
-            self.memory[item].append(observations[i])
+            self.buffer[item].append(observations[i])
 
     def get_items(self, idx_list: np.ndarray):
         batches = {}
@@ -23,8 +23,8 @@ class ReplayMemory:
         
         for idx in idx_list:
             for item in self.items:
-                batches[item].append(self.memory[item][idx])
-            batches["next_state"].append(self.memory["state"][idx+1])
+                batches[item].append(self.buffer[item][idx])
+            batches["next_state"].append(self.buffer["state"][idx+1])
         for key in batches.keys():
             batches[key] = np.array(batches[key])
         return batches
@@ -41,7 +41,7 @@ class ReplayMemory:
 
     def clear(self):
         for item in self.items:
-            self.memory[item].clear()
+            self.buffer[item].clear()
 
     def __len__(self):
-        return len(self.memory["state"])
+        return len(self.buffer["state"])

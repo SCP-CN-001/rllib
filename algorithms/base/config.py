@@ -1,21 +1,22 @@
-class ConfigBase:
+from abc import ABC, abstractmethod
+
+
+class ConfigBase(ABC):
     def __init__(self):
         # runtime
         self.n_epoch = None
         self.n_initial_exploration_steps = None
 
         # environment
-        self.observation_space = None
+        self.state_space = None
         self.action_space = None
         self.state_dim: tuple = None
         self.action_dim: tuple = None
 
         # model
-        self.gamma: float = 0.99
-        self.batch_size:int = 128
-        self.lr: float = 1e-3
-        self.tau: float = 1e-3 # when tau=0, the update becomes hard update
-        self.max_train_steps = 1e6
+        self.gamma: float = 0.99    # reward discount factor
+        self.batch_size:int = 32    # batch size
+        self.lr: float = 1e-3           # learning rate
 
         # explore
         self.explore: bool = True
@@ -23,16 +24,20 @@ class ConfigBase:
             "type": "StochasticSampling",
         }
 
-        # tricks
-        self.orthogonal_init = True
-        self.lr_decay = False
-
         # evaluation
         self.evaluation_interval = None
+        self.evaluation_duration = 10
+        self.evaluation_duration_unit = "episodes"
 
-        # save and load
-        self.check_list = []
-    
+        # debug
+        self.log_level = "verbose"
+        self.seed = None
+
     def merge_configs(self, configs: dict):
+        """Merge the custom configs for a specific algorithm
+
+        Args:
+            configs (dict): the custom configs
+        """
         for key, value in configs.items():
             setattr(self, key, value)
