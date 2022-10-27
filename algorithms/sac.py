@@ -12,30 +12,11 @@ from rllib.utils.replay_buffer.replay_buffer import ReplayBuffer
 
 
 class SACActor(nn.Module):
-    def __init__(self, state_dim: int, action_dim: int, hidden_size: int):
-        super(SACActor, self).__init__()
-
-        self.net = nn.Sequential(
-            nn.Linear(state_dim + action_dim, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, 1)
-        )
-    
-    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
-        x = torch.cat([state, action], 1)
-        x = self.net(x)
-
-        return x
-
-
-class SACCritic(nn.Module):
     def __init__(
         self, state_dim: int, action_dim: int, hidden_size: int, 
         log_std_min: float, log_std_max: float, epsilon: float
     ):
-        super(SACCritic, self).__init__()
+        super(SACActor, self).__init__()
         self.log_std_min = log_std_min
         self.log_std_max = log_std_max
         self.epsilon = epsilon
@@ -81,6 +62,24 @@ class SACCritic(nn.Module):
 
         return action, log_prob
 
+class SACCritic(nn.Module):
+    def __init__(self, state_dim: int, action_dim: int, hidden_size: int):
+        super(SACCritic, self).__init__()
+
+        self.net = nn.Sequential(
+            nn.Linear(state_dim + action_dim, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, 1)
+        )
+    
+    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        x = torch.cat([state, action], 1)
+        x = self.net(x)
+
+        return x
+
 
 class SACConfig(ConfigBase):
     """Configuration of the SAC model
@@ -109,7 +108,10 @@ class SACConfig(ConfigBase):
         self.actor_kwargs = {
             "state_dim": self.state_dim,
             "action_dim": self.action_dim,
-            "hidden_size": 256
+            "hidden_size": 256,
+            "log_std_min": -20,
+            "log_std_max": 2,
+            "epsilon": 1e-6
         }
 
         ## critic net
@@ -118,9 +120,7 @@ class SACConfig(ConfigBase):
         self.critic_kwargs = {
             "state_dim": self.state_dim,
             "action_dim": self.action_dim,
-            "hidden_size": 256,
-            "log_std_min": -20,
-            "log_std_max": 2
+            "hidden_size": 256
         }
 
         ## alpha
@@ -152,7 +152,7 @@ class SAC(AgentBase):
         self.q2_target_net = deepcopy(self.q2_net)
 
         ## alpha
-        self.alpha = self.configs.alpha
+        self.alpha = self.configs.initial_alpha
 
         ## optimizers
         self.q1_optimizer = torch.optim.Adam(self.q1_net.parameters(), self.configs.lr_critic)
@@ -188,22 +188,13 @@ class SAC(AgentBase):
         # Soft Q loss
         with torch.no_grad():
             next_action, next_log_prob = self.policy_net.evaluate(next_state)
-            next_observation = torch.cat([next_state, next_action], 1)
-            q1_target = self.q1_target_net(next_observation)
-            q2_target = self.q2_target_net(next_observation)
+            q1_target = self.q1_target_net(next_state, next_action)
+            q2_target = self.q2_target_net(next_state, next_action)
             q_target = reward + done * self.configs.gamma * (torch.min(q1_target, q2_target) - self.alpha * next_log_prob)
-        observation = torch.cat([state, action], 1)
-        current_q1 = self.q1_net(observation)
-        current_q2 = self.q2_net(observation)
+        current_q1 = self.q1_net(state, action)
+        current_q2 = self.q2_net(state, action)
         q1_loss = F.mse_loss(current_q1, q_target.detach())
         q2_loss = F.mse_loss(current_q2, q_target.detach())
-        
-        # Policy loss
-        action_, log_prob = self.reparameterize_policy(state)
-        observation_ = torch.cat([state, action_], 1)
-        q1_value = self.q1_net(observation_)
-        q2_value = self.q2_net(observation_)
-        policy_loss = (self.alpha * log_prob - torch.min(q1_value, q2_value)).mean()
 
         # Update critic networks
         self.q1_optimizer.zero_grad()
@@ -213,6 +204,12 @@ class SAC(AgentBase):
         q2_loss.backward()
         self.q2_optimizer.step()
 
+        # Policy loss
+        action_, log_prob = self.policy_net.evaluate(state)
+        q1_value = self.q1_net(state, action_)
+        q2_value = self.q2_net(state, action_)
+        policy_loss = (self.alpha * log_prob - torch.min(q1_value, q2_value)).mean()
+
         # Update policy
         self.policy_optimizer.zero_grad()
         policy_loss.backward()
@@ -221,3 +218,6 @@ class SAC(AgentBase):
         # Soft update target networks
         self.soft_update(self.q1_target_net, self.q1_net)
         self.soft_update(self.q2_target_net, self.q2_net)
+
+    def evaluate(self):
+        return super().evaluate()
