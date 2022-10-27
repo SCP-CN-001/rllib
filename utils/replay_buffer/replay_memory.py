@@ -3,7 +3,7 @@ from collections import deque
 import numpy as np
 
 
-class ReplayMemory(object):
+class ReplayMemory:
     def __init__(self, memory_size: int, extra_items: list = []):
         self.items = ["state", "action", "reward", "done"] + extra_items
         self.memory = {}
