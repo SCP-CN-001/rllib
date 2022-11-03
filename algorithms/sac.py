@@ -11,6 +11,9 @@ from rllib.algorithms.base.config import ConfigBase
 from rllib.utils.replay_buffer.replay_buffer import ReplayBuffer
 
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
 class SACActor(nn.Module):
     def __init__(
         self, state_dim: int, action_dim: int, hidden_size: int, 
@@ -56,11 +59,12 @@ class SACActor(nn.Module):
         noise = Normal(0, 1)
 
         z = noise.sample()
-        z = z.to(mean.get_device())
+        z = z.to(device)
         action = torch.tanh(mean + std * z)
         log_prob = normal.log_prob(mean + std * z) - torch.log(1 - action.pow(2) + self.epsilon)
 
         return action, log_prob
+
 
 class SACCritic(nn.Module):
     def __init__(self, state_dim: int, action_dim: int, hidden_size: int):
@@ -92,8 +96,14 @@ class SACConfig(ConfigBase):
                 setattr(self, key, configs[key])
             else:
                 raise AttributeError("[%s] is not defined for SACConfig!" % key)
-        self.state_dim = self.state_space.shape[0]
-        self.action_dim = self.action_space.shape[0]
+        if "state_dim" not in configs.keys():
+            self.state_dim = self.state_space.shape[0]
+        else:
+            self.state_dim = configs["state_dim"]
+        if "action_dim" not in configs.keys():
+            self.action_dim = self.action_space.shape[0]
+        else:
+            self.action_dim = configs["action_dim"]
 
         # model
         ## hyper-parameters
@@ -138,17 +148,16 @@ class SAC(AgentBase):
     """
     def __init__(self, configs: dict):
         super().__init__(SACConfig, configs)
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # networks
         ## actor net
-        self.policy_net = self.configs.actor_net(**self.configs.actor_kwargs).to(self.device)
+        self.policy_net = self.configs.actor_net(**self.configs.actor_kwargs).to(device)
 
         ## critic nets
-        self.q1_net = self.configs.critic_net(**self.configs.critic_kwargs).to(self.device)
+        self.q1_net = self.configs.critic_net(**self.configs.critic_kwargs).to(device)
         self.q1_target_net = deepcopy(self.q1_net)
 
-        self.q2_net = self.configs.critic_net(**self.configs.critic_kwargs).to(self.device)
+        self.q2_net = self.configs.critic_net(**self.configs.critic_kwargs).to(device)
         self.q2_target_net = deepcopy(self.q2_net)
 
         ## alpha
@@ -165,7 +174,7 @@ class SAC(AgentBase):
 
     def get_action(self, state):
         if not isinstance(state, torch.Tensor):
-            state = torch.FloatTensor(state).to(self.device)
+            state = torch.FloatTensor(state).to(device)
         action = self.policy_net.action(state)
 
         return action
@@ -179,11 +188,11 @@ class SAC(AgentBase):
             return
 
         batches = self.buffer.sample(self.configs.batch_size)
-        state = torch.FloatTensor(batches["state"]).to(self.device)
-        action = torch.FloatTensor(batches["action"]).to(self.device)
-        reward = torch.FloatTensor(batches["reward"]).unsqueeze(-1).to(self.device)
-        next_state = torch.FloatTensor(batches["next_state"]).to(self.device)
-        done = torch.FloatTensor(batches["done"]).unsqueeze(-1).to(self.device)
+        state = torch.FloatTensor(batches["state"]).to(device)
+        action = torch.FloatTensor(batches["action"]).to(device)
+        reward = torch.FloatTensor(batches["reward"]).unsqueeze(-1).to(device)
+        next_state = torch.FloatTensor(batches["next_state"]).to(device)
+        done = torch.FloatTensor(batches["done"]).unsqueeze(-1).to(device)
 
         # Soft Q loss
         with torch.no_grad():
