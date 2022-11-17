@@ -29,6 +29,7 @@ class SACActor(nn.Module):
             nn.Linear(state_dim, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
+            nn.ReLU()
         )
         self.mean_layer = nn.Linear(hidden_size, action_dim)
         self.log_std_layer = nn.Linear(hidden_size, action_dim)
@@ -41,12 +42,12 @@ class SACActor(nn.Module):
 
         return mean, log_std
 
-    def action(self, state: torch.Tensor)  -> torch.Tensor:
+    def action(self, state: torch.Tensor)  -> np.ndarray:
         mean, log_std = self.forward(state)
         std = log_std.exp()
-        normal = Normal(mean, std)
+        dist = Normal(mean, std)
 
-        z = normal.sample()
+        z = dist.sample()
         action = torch.tanh(z).detach().cpu().numpy()
 
         return action
@@ -56,13 +57,13 @@ class SACActor(nn.Module):
         """
         mean, log_std = self.forward(state)
         std = log_std.exp()
-        normal = Normal(mean, std)
+        dist = Normal(mean, std)
         noise = Normal(0, 1)
 
         z = noise.sample()
         z = z.to(device)
         action = torch.tanh(mean + std * z)
-        log_prob = normal.log_prob(mean + std * z) - torch.log(1 - action.pow(2) + self.epsilon)
+        log_prob = dist.log_prob(mean + std * z) - torch.log(1 - action.pow(2) + self.epsilon)
 
         return action, log_prob
 
@@ -205,6 +206,7 @@ class SAC(AgentBase):
 
         # soft Q loss
         next_action, next_log_prob = self.policy_net.evaluate(next_state)
+        next_log_prob = next_log_prob.sum(-1, keepdim=True)
         q1_target = self.q1_target_net(next_state, next_action)
         q2_target = self.q2_target_net(next_state, next_action)
         q_target = reward + done * self.configs.gamma * (torch.min(q1_target, q2_target) - self.alpha.detach() * next_log_prob)
@@ -224,6 +226,7 @@ class SAC(AgentBase):
 
         # policy loss
         action_, log_prob = self.policy_net.evaluate(state)
+        log_prob = log_prob.sum(-1, keepdim=True)
         q1_value = self.q1_net(state, action_)
         q2_value = self.q2_net(state, action_)
         policy_loss = (self.alpha.detach() * log_prob - torch.min(q1_value, q2_value)).mean()
