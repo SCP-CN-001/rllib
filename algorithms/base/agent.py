@@ -20,12 +20,12 @@ class AgentBase(ABC):
         """Update the network's parameters.
         """
 
-    def save_checkpoint(self, checkpoint_dir: str):
+    @abstractmethod
+    def save(self, checkpoint_dir: str, param_only: bool = True):
         """Store the model structure and corresponding parameters to a file.
         """
-        return
 
-    def load_checkpoint(self, path: str = None, params_only: bool = None) -> None:
+    @abstractmethod
+    def load(self, checkpoint_dir: str, param_only: bool = True) -> None:
         """Load the model structure and corresponding parameters from a file.
         """
-        return
