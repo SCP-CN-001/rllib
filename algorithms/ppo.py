@@ -104,7 +104,7 @@ class PPOConfig(ConfigBase):
         self.clip_epsilon = 0.2
 
         ## actor net
-        self.lr_actor = 3e-4
+        self.lr_actor = self.lr
         self.actor_net = PPOActor
         self.actor_kwargs = {
             "discrete": self.discrete,
@@ -114,7 +114,7 @@ class PPOConfig(ConfigBase):
         }
 
         ## critic net
-        self.lr_critic = 4e-4
+        self.lr_critic = self.lr
         self.critic_net = PPOCritic
         self.critic_kwargs = {
             "state_dim": self.state_dim,
