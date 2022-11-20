@@ -37,8 +37,8 @@ class DDPGActor(nn.Module):
         fc2_fanin = linear_fanin(self.fc2)
         self.fc2.weight.data.uniform_(-1/np.sqrt(fc2_fanin), 1/np.sqrt(fc2_fanin))
         self.fc2.bias.data.uniform_(-1/np.sqrt(fc2_fanin), 1/np.sqrt(fc2_fanin))
-        self.fc3.weight.data.uniform_(-1/init_weight, 1/init_weight)
-        self.fc3.bias.data.uniform_(-1/init_weight, 1/init_weight)
+        self.fc3.weight.data.uniform_(-init_weight, init_weight)
+        self.fc3.bias.data.uniform_(-init_weight, init_weight)
 
     def forward(self, state: torch.Tensor) -> torch.Tensor:
         x = self.relu(self.fc1(state))
@@ -70,8 +70,8 @@ class DDPGCritic(nn.Module):
         fc2_fanin = linear_fanin(self.fc2)
         self.fc2.weight.data.uniform_(-1/np.sqrt(fc2_fanin), 1/np.sqrt(fc2_fanin))
         self.fc2.bias.data.uniform_(-1/np.sqrt(fc2_fanin), 1/np.sqrt(fc2_fanin))
-        self.fc3.weight.data.uniform_(-1/init_weight, 1/init_weight)
-        self.fc3.bias.data.uniform_(-1/init_weight, 1/init_weight)
+        self.fc3.weight.data.uniform_(-init_weight, init_weight)
+        self.fc3.bias.data.uniform_(-init_weight, init_weight)
         
     def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         x = torch.cat([state, action], 1)
@@ -110,6 +110,7 @@ class DDPGConfig(ConfigBase):
         self.buffer_size: int = int(1e6)
         self.ou_theta = 0.15          # for exploration based on Ornstein–Uhlenbeck process
         self.ou_sigma = 0.2
+        self.ou_step = 0.02
 
         ## actor net
         self.lr_actor = 1e-4
@@ -118,7 +119,8 @@ class DDPGConfig(ConfigBase):
             "state_dim": self.state_dim,
             "action_dim": self.action_dim,
             "hidden_size1": 400,
-            "hidden_size2": 300
+            "hidden_size2": 300,
+            "init_weight": 3e-3
         }
 
         ## critic net
@@ -128,7 +130,8 @@ class DDPGConfig(ConfigBase):
             "state_dim": self.state_dim,
             "action_dim": self.action_dim,
             "hidden_size1": 400,
-            "hidden_size2": 300
+            "hidden_size2": 300,
+            "init_weight": 3e-4
         }
 
         self.merge_configs(configs)
@@ -151,15 +154,15 @@ class DDPG(AgentBase):
 
         ## optimizers
         self.actor_optimizer = torch.optim.Adam(self.actor_net.parameters(), self.configs.lr_actor)
-        self.critic_optimizer = torch.optim.Adam(self.critic_net.parameters(), self.configs.lr_critic_net)
+        self.critic_optimizer = torch.optim.Adam(self.critic_net.parameters(), self.configs.lr_critic)
 
         # the replay buffer
         self.buffer = ReplayBuffer(self.configs.buffer_size)
 
         # exploration
         self.noise_generator = OrnsteinUhlenbeckNoise(
-            0, self.configs.ou_theta, self.configs.ou_sigma, 
-            np.zeros(self.configs.action_dim)
+            self.configs.action_dim, 
+            0, self.configs.ou_theta, self.configs.ou_sigma, self.configs.ou_step,
         )
 
     def get_action(self, state):
@@ -186,21 +189,21 @@ class DDPG(AgentBase):
         next_state = torch.FloatTensor(batches["next_state"]).to(device)
         done = torch.FloatTensor(batches["done"]).unsqueeze(-1).to(device)
 
-        # update the actor network
-        actor_loss = -self.critic_net(state, action).mean()
-        self.actor_optimizer.zero_grad()
-        actor_loss.backward()
-        self.actor_optimizer.step()
-
         # update the critic network
-        q_next = self.critic_target_net(next_state, self.actor_target_net(state))
+        next_action = self.actor_target_net(state)
+        q_next = self.critic_target_net(next_state, next_action)
         q_target = reward + done * self.configs.gamma * q_next
         q_value = self.critic_net(state, action)
         critic_loss = F.mse_loss(q_value, q_target)
-
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
+
+        # update the actor network
+        actor_loss = -self.critic_net(state, self.actor_net(state)).mean()
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        self.actor_optimizer.step()
 
         # soft update target networks
         self.soft_update(self.actor_target_net, self.actor_net)
