@@ -246,32 +246,3 @@ class SAC(AgentBase):
         # soft update target networks
         self.soft_update(self.q1_target_net, self.q1_net)
         self.soft_update(self.q2_target_net, self.q2_net)
-
-    def save(self, checkpoint_dir: str, param_only: bool = True):
-        if param_only:
-            torch.save(self.policy_net.state_dict(), "%s/actor.pkl" % checkpoint_dir)
-            torch.save(
-                {"q1_net": self.q1_net.state_dict(), "q2_net": self.q2_net.state_dict()}, 
-                "%s/critic.pkl" % checkpoint_dir
-            )
-        else:
-            torch.save(self.policy_net, "%s/actor.pkl" % checkpoint_dir)
-            torch.save(
-                {"q1_net": self.q1_net, "q2_net": self.q2_net}, 
-                "%s/critic.pkl" % checkpoint_dir
-            )
-
-    def load(self, checkpoint_dir: str, param_only: bool = True):
-        actor_checkpoint = torch.load("%s/actor.pkl" % checkpoint_dir)
-        critic_checkpoint = torch.load("%s/critic.pkl" % checkpoint_dir)
-        if param_only:
-            self.policy_net.load_state_dict(actor_checkpoint)
-            self.q1_net.load_state_dict(critic_checkpoint["q1_net"])
-            self.q2_net.load_state_dict(critic_checkpoint["q2_net"])
-        else:
-            self.policy_net = actor_checkpoint
-            self.q1_net = critic_checkpoint["q1_net"]
-            self.q2_net = critic_checkpoint["q2_net"]
-
-        self.q1_target_net = deepcopy(self.q1_net)
-        self.q2_target_net = deepcopy(self.q2_target_net)
