@@ -12,7 +12,7 @@ from rllib.algorithms.base.agent import AgentBase
 from rllib.replay_buffer.replay_buffer import ReplayBuffer
 
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def orthogonal_init(layer, gain=1.0):
@@ -22,8 +22,12 @@ def orthogonal_init(layer, gain=1.0):
 
 class PPOActor(nn.Module):
     def __init__(
-        self, discrete: bool, state_dim: int, action_dim: int, hidden_size: int,
-        dist_type: str = "gaussian"
+        self,
+        discrete: bool,
+        state_dim: int,
+        action_dim: int,
+        hidden_size: int,
+        dist_type: str = "gaussian",
     ):
         super(PPOActor, self).__init__()
         self.discrete = discrete
@@ -121,8 +125,8 @@ class PPOCritic(nn.Module):
 
 
 class PPOConfig(ConfigBase):
-    """Configuration of the PPO model
-    """
+    """Configuration of the PPO model"""
+
     def __init__(self, configs):
         super().__init__()
 
@@ -158,20 +162,17 @@ class PPOConfig(ConfigBase):
             "state_dim": self.state_dim,
             "action_dim": self.action_dim,
             "hidden_size": 64,
-            "dist_type": self.dist_type
+            "dist_type": self.dist_type,
         }
 
         ## critic net
         self.lr_critic = 3e-4
         self.critic_net = PPOCritic
-        self.critic_kwargs = {
-            "state_dim": self.state_dim,
-            "hidden_size": 64,
-        }
+        self.critic_kwargs = {"state_dim": self.state_dim, "hidden_size": 64}
 
         # tricks
-        ## By default none of the tricks are used, and the performance of the 
-        ## minimalism-style PPO is not very beautiful. 
+        ## By default none of the tricks are used, and the performance of the
+        ## minimalism-style PPO is not very beautiful.
 
         # advantage normalization
         self.advantage_norm = False
@@ -180,18 +181,19 @@ class PPOConfig(ConfigBase):
         # gradient clipping
         self.gradient_clip = False
         self.gradient_clip_range = 0.5
-        
+
         self.merge_configs(configs)
 
 
 class PPO(AgentBase):
     """Proximal Policy Optimization (PPO)
-    An implementation of PPO based on the original paper 'Proximal Policy Optimization Algorithms'. 
+    An implementation of PPO based on the original paper 'Proximal Policy Optimization Algorithms'.
 
-    The performance of the minimal PPO is not good, so the tricks from 'Implementation 
-    Matters in Deep Policy Gradients: A Case Study on PPO and TRPO' are also implemented 
+    The performance of the minimal PPO is not good, so the tricks from 'Implementation
+    Matters in Deep Policy Gradients: A Case Study on PPO and TRPO' are also implemented
     and controlled by the PPOConfig.
     """
+
     def __init__(self, configs: dict) -> None:
         super().__init__(PPOConfig, configs)
 
@@ -203,18 +205,20 @@ class PPO(AgentBase):
         self.critic_net = self.configs.critic_net(**self.configs.critic_kwargs).to(device)
 
         ## optimizers
-        self.actor_optimizer = torch.optim.Adam(self.actor_net.parameters(), self.configs.lr_actor, eps=1e-5)
-        self.critic_optimizer = torch.optim.Adam(self.critic_net.parameters(), self.configs.lr_critic, eps=1e-5)
+        self.actor_optimizer = torch.optim.Adam(
+            self.actor_net.parameters(), self.configs.lr_actor, eps=1e-5
+        )
+        self.critic_optimizer = torch.optim.Adam(
+            self.critic_net.parameters(), self.configs.lr_critic, eps=1e-5
+        )
 
         ## buffer
-        self.buffer = ReplayBuffer(
-            self.configs.horizon, extra_items=["log_prob"]
-        )
+        self.buffer = ReplayBuffer(self.configs.horizon, extra_items=["log_prob"])
 
     def get_action(self, state):
         if not isinstance(state, torch.Tensor):
             state = torch.FloatTensor(state).to(device)
-        
+
         action, log_prob = self.actor_net.action(state)
         return action, log_prob
 
@@ -232,16 +236,18 @@ class PPO(AgentBase):
 
         if not self.configs.advantage_norm:
             reward = (reward - reward.mean()) / (reward.std() + 1e-10)
-        
+
         # generalized advantage estimation
         gae = 0
         advantage = []
         with torch.no_grad():
-            value =  self.critic_net(state)
+            value = self.critic_net(state)
             value_next = self.critic_net(next_state)
             deltas = reward + self.configs.gamma * done * value_next - value
-            for delta, is_done in \
-                zip(reversed(deltas.detach().cpu().numpy()), reversed(done.detach().cpu().numpy())):
+            for delta, is_done in zip(
+                reversed(deltas.detach().cpu().numpy()),
+                reversed(done.detach().cpu().numpy()),
+            ):
                 gae = delta + self.configs.gamma * is_done * self.configs.gae_lambda * gae
                 advantage.append(gae)
             advantage.reverse()
@@ -254,27 +260,40 @@ class PPO(AgentBase):
         # optimize policy
         for _ in range(self.configs.epoch):
             for idx in BatchSampler(
-                SubsetRandomSampler(range(self.configs.horizon-1)), 
-                self.configs.batch_size, True
+                SubsetRandomSampler(range(self.configs.horizon - 1)),
+                self.configs.batch_size,
+                True,
             ):
                 dist = self.actor_net.get_dist(state[idx])
                 log_prob = dist.log_prob(action[idx])
                 ratios = torch.exp(log_prob - old_log_prob[idx])
 
                 loss_cpi = ratios * advantage[idx]
-                loss_clip = torch.clamp(ratios, 1-self.configs.clip_epsilon, 1+self.configs.clip_epsilon) * advantage[idx]
+                loss_clip = (
+                    torch.clamp(
+                        ratios,
+                        1 - self.configs.clip_epsilon,
+                        1 + self.configs.clip_epsilon,
+                    )
+                    * advantage[idx]
+                )
 
                 if self.configs.entropy_coef is None:
-                    actor_loss = - torch.min(loss_cpi, loss_clip).mean()
+                    actor_loss = -torch.min(loss_cpi, loss_clip).mean()
                 else:
                     dist_entropy = dist.entropy()
-                    actor_loss = (- torch.min(loss_cpi, loss_clip) - self.configs.entropy_coef * dist_entropy).mean()
+                    actor_loss = (
+                        -torch.min(loss_cpi, loss_clip)
+                        - self.configs.entropy_coef * dist_entropy
+                    ).mean()
 
                 # update actor net
                 self.actor_optimizer.zero_grad()
                 actor_loss.backward()
                 if self.configs.gradient_clip:
-                    nn.utils.clip_grad_norm_(self.actor_net.parameters(), self.configs.gradient_clip_range)
+                    nn.utils.clip_grad_norm_(
+                        self.actor_net.parameters(), self.configs.gradient_clip_range
+                    )
                 self.actor_optimizer.step()
 
                 # update critic net
@@ -282,25 +301,30 @@ class PPO(AgentBase):
                 self.critic_optimizer.zero_grad()
                 critic_loss.backward()
                 if self.configs.gradient_clip:
-                    nn.utils.clip_grad_norm_(self.critic_net.parameters(), self.configs.gradient_clip_range)
+                    nn.utils.clip_grad_norm_(
+                        self.critic_net.parameters(), self.configs.gradient_clip_range
+                    )
                 self.critic_optimizer.step()
 
         self.buffer.clear()
 
     def save(self, path: str):
-        torch.save({
-            "actor_net": self.actor_net.state_dict(),
-            "actor_optimizer": self.actor_optimizer.state_dict(),
-            "critic_net": self.critic_net.state_dict(),
-            "critic_optimizer": self.critic_optimizer.state_dict(),
-        }, path)
+        torch.save(
+            {
+                "actor_net": self.actor_net.state_dict(),
+                "actor_optimizer": self.actor_optimizer.state_dict(),
+                "critic_net": self.critic_net.state_dict(),
+                "critic_optimizer": self.critic_optimizer.state_dict(),
+            },
+            path,
+        )
 
-    def load(self, path: str, map_location = None):
+    def load(self, path: str, map_location=None):
         checkpoint = torch.load(path, map_location=map_location)
         self.actor_net.load_state_dict(checkpoint["actor_net"])
         self.actor_optimizer.load_state_dict(checkpoint["actor_optimizer"])
         self.critic_net.load_state_dict(checkpoint["critic_net"])
         self.critic_optimizer.load_state_dict(checkpoint["critic_optimizer"])
-        
+
         self.actor_target_net = deepcopy(self.actor_net)
         self.critic_target_net = deepcopy(self.critic_net)

@@ -10,7 +10,7 @@ from rllib.algorithms.base.agent import AgentBase
 from rllib.replay_buffer.replay_buffer import ReplayBuffer
 
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class TD3Actor(nn.Module):
@@ -22,7 +22,7 @@ class TD3Actor(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_size, action_dim)
+            nn.Linear(hidden_size, action_dim),
         )
 
     def forward(self, state: torch.Tensor) -> torch.Tensor:
@@ -30,7 +30,7 @@ class TD3Actor(nn.Module):
 
         return x
 
-    def action(self, state: torch.Tensor)  -> np.ndarray:
+    def action(self, state: torch.Tensor) -> np.ndarray:
         x = self.forward(state)
         action = torch.tanh(x)
 
@@ -42,11 +42,11 @@ class TD3Critic(nn.Module):
         super(TD3Critic, self).__init__()
 
         self.net = nn.Sequential(
-            nn.Linear(state_dim+action_dim, hidden_size),
+            nn.Linear(state_dim + action_dim, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_size, 1)
+            nn.Linear(hidden_size, 1),
         )
 
     def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
@@ -76,7 +76,7 @@ class TD3Config(ConfigBase):
 
         # model
         self.batch_size = 100
-        self.tau: float = 5e-3         # soft-update factors
+        self.tau: float = 5e-3  # soft-update factors
         self.buffer_size: int = int(1e6)
         self.explore_noise_sigma = 0.1
         self.explore_noise_clip = 0.2
@@ -87,10 +87,10 @@ class TD3Config(ConfigBase):
         ## actor net
         self.lr_actor = 1e-3
         self.actor_net = TD3Actor
-        self.actor_kwargs= {
+        self.actor_kwargs = {
             "state_dim": self.state_dim,
             "action_dim": self.action_dim,
-            "hidden_size": 256
+            "hidden_size": 256,
         }
 
         ## critic net
@@ -114,19 +114,26 @@ class TD3(AgentBase):
         self.update_cnt = 0
 
         ## critic net
-        self.critic_net1 = self.configs.critic_net(**self.configs.critic_kwargs).to(device)
+        self.critic_net1 = self.configs.critic_net(**self.configs.critic_kwargs).to(
+            device
+        )
         self.critic_target_net1 = deepcopy(self.critic_net1)
 
-        self.critic_net2 = self.configs.critic_net(**self.configs.critic_kwargs).to(device)
+        self.critic_net2 = self.configs.critic_net(**self.configs.critic_kwargs).to(
+            device
+        )
         self.critic_target_net2 = deepcopy(self.critic_net2)
 
         ## optimizers
         self.actor_optimizer = torch.optim.Adam(
-            self.actor_net.parameters(), self.configs.lr_actor)
+            self.actor_net.parameters(), self.configs.lr_actor
+        )
         self.critic_optimizer1 = torch.optim.Adam(
-            self.critic_net1.parameters(), self.configs.lr_critic)
+            self.critic_net1.parameters(), self.configs.lr_critic
+        )
         self.critic_optimizer2 = torch.optim.Adam(
-            self.critic_net2.parameters(), self.configs.lr_critic)
+            self.critic_net2.parameters(), self.configs.lr_critic
+        )
 
         # the replay buffer
         self.buffer = ReplayBuffer(self.configs.buffer_size)
@@ -151,7 +158,9 @@ class TD3(AgentBase):
 
     def soft_update(self, target_net, current_net):
         for target, current in zip(target_net.parameters(), current_net.parameters()):
-            target.data.copy_(current.data * self.configs.tau + target.data * (1. - self.configs.tau))
+            target.data.copy_(
+                current.data * self.configs.tau + target.data * (1.0 - self.configs.tau)
+            )
 
     def train(self):
         if len(self.buffer) < self.configs.batch_size:
@@ -193,7 +202,7 @@ class TD3(AgentBase):
         if self.update_cnt % self.configs.target_update_freq == 0:
             action_ = self.actor_net.action(state)
             q1_value = self.critic_net1(state, action_)
-            actor_loss = - q1_value.mean()
+            actor_loss = -q1_value.mean()
             # update the actor network
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
@@ -204,16 +213,19 @@ class TD3(AgentBase):
             self.soft_update(self.critic_target_net2, self.critic_net2)
 
     def save(self, path: str):
-        torch.save({
-            "actor_net": self.actor_net.state_dict(),
-            "actor_optimizer": self.actor_optimizer.state_dict(),
-            "critic_net1": self.critic_net1.state_dict(),
-            "critic_optimizer1": self.critic_optimizer1.state_dict(),
-            "critic_net2": self.critic_net2.state_dict(),
-            "critic_optimizer2": self.critic_optimizer2.state_dict(),
-        }, path)
+        torch.save(
+            {
+                "actor_net": self.actor_net.state_dict(),
+                "actor_optimizer": self.actor_optimizer.state_dict(),
+                "critic_net1": self.critic_net1.state_dict(),
+                "critic_optimizer1": self.critic_optimizer1.state_dict(),
+                "critic_net2": self.critic_net2.state_dict(),
+                "critic_optimizer2": self.critic_optimizer2.state_dict(),
+            },
+            path,
+        )
 
-    def load(self, path: str, map_location = None):
+    def load(self, path: str, map_location=None):
         checkpoint = torch.load(path, map_location=map_location)
         self.actor_net.load_state_dict(checkpoint["actor_net"])
         self.actor_optimizer.load_state_dict(checkpoint["actor_optimizer"])

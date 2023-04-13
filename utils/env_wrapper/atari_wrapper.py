@@ -9,8 +9,8 @@ except ImportError:
 
 
 class AtariPreprocessing(gym.Wrapper):
-    """Atari 2600 preprocessings 
-    
+    """Atari 2600 preprocessings
+
     This class is implemented by gym, but it is planned to deprecate in the future.
 
     This class follows the guidelines in
@@ -97,9 +97,7 @@ class AtariPreprocessing(gym.Wrapper):
         _shape = (screen_size, screen_size, 1 if grayscale_obs else 3)
         if grayscale_obs and not grayscale_newaxis:
             _shape = _shape[:-1]  # Remove channel axis
-        self.observation_space = Box(
-            low=_low, high=_high, shape=_shape, dtype=_obs_dtype
-        )
+        self.observation_space = Box(low=_low, high=_high, shape=_shape, dtype=_obs_dtype)
 
     def step(self, action):
         R = 0.0

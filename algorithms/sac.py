@@ -12,13 +12,18 @@ from rllib.algorithms.base.config import ConfigBase
 from rllib.replay_buffer.replay_buffer import ReplayBuffer
 
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class SACActor(nn.Module):
     def __init__(
-        self, state_dim: int, action_dim: int, hidden_size: int, 
-        log_std_min: float, log_std_max: float, epsilon: float
+        self,
+        state_dim: int,
+        action_dim: int,
+        hidden_size: int,
+        log_std_min: float,
+        log_std_max: float,
+        epsilon: float,
     ):
         super(SACActor, self).__init__()
         self.log_std_min = log_std_min
@@ -29,7 +34,7 @@ class SACActor(nn.Module):
             nn.Linear(state_dim, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.ReLU()
+            nn.ReLU(),
         )
         self.mean_layer = nn.Linear(hidden_size, action_dim)
         self.log_std_layer = nn.Linear(hidden_size, action_dim)
@@ -42,7 +47,7 @@ class SACActor(nn.Module):
 
         return mean, log_std
 
-    def action(self, state: torch.Tensor)  -> np.ndarray:
+    def action(self, state: torch.Tensor) -> np.ndarray:
         mean, log_std = self.forward(state)
         std = log_std.exp()
         dist = Normal(mean, std)
@@ -53,8 +58,7 @@ class SACActor(nn.Module):
         return action
 
     def evaluate(self, state: torch.Tensor) -> Tuple[torch.Tensor]:
-        """Implement the re-parameterization trick f()
-        """
+        """Implement the re-parameterization trick f()"""
         mean, log_std = self.forward(state)
         std = log_std.exp()
         dist = Normal(mean, std)
@@ -63,7 +67,9 @@ class SACActor(nn.Module):
         z = noise.sample()
         z = z.to(device)
         action = torch.tanh(mean + std * z)
-        log_prob = dist.log_prob(mean + std * z) - torch.log(1 - action.pow(2) + self.epsilon)
+        log_prob = dist.log_prob(mean + std * z) - torch.log(
+            1 - action.pow(2) + self.epsilon
+        )
 
         return action, log_prob
 
@@ -77,9 +83,9 @@ class SACCritic(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_size, 1)
+            nn.Linear(hidden_size, 1),
         )
-    
+
     def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         x = torch.cat([state, action], 1)
         x = self.net(x)
@@ -88,8 +94,8 @@ class SACCritic(nn.Module):
 
 
 class SACConfig(ConfigBase):
-    """Configuration of the SAC model
-    """
+    """Configuration of the SAC model"""
+
     def __init__(self, configs: dict):
         super().__init__()
 
@@ -111,7 +117,7 @@ class SACConfig(ConfigBase):
         ## hyper-parameters
         self.gamma: float = 0.99
         self.batch_size: int = 128
-        self.tau: float = 5e-3          # soft-update factor
+        self.tau: float = 5e-3  # soft-update factor
         self.buffer_size: int = int(1e6)
 
         ## actor net
@@ -123,7 +129,7 @@ class SACConfig(ConfigBase):
             "hidden_size": 256,
             "log_std_min": -20,
             "log_std_max": 2,
-            "epsilon": 1e-6
+            "epsilon": 1e-6,
         }
 
         ## critic net
@@ -132,7 +138,7 @@ class SACConfig(ConfigBase):
         self.critic_kwargs = {
             "state_dim": self.state_dim,
             "action_dim": self.action_dim,
-            "hidden_size": 256
+            "hidden_size": 256,
         }
 
         ## alpha
@@ -150,6 +156,7 @@ class SAC(AgentBase):
     """Soft Actor-Critic (SAC)
     An implementation of SAC based on the 2nd version of SAC paper 'Soft Actor-Critic Algorithms and Applications'
     """
+
     def __init__(self, configs: dict):
         super().__init__(SACConfig, configs)
 
@@ -158,10 +165,14 @@ class SAC(AgentBase):
         self.actor_net = self.configs.actor_net(**self.configs.actor_kwargs).to(device)
 
         ## critic nets
-        self.critic_net1 = self.configs.critic_net(**self.configs.critic_kwargs).to(device)
+        self.critic_net1 = self.configs.critic_net(**self.configs.critic_kwargs).to(
+            device
+        )
         self.critic_target_net1 = deepcopy(self.critic_net1)
 
-        self.critic_net2 = self.configs.critic_net(**self.configs.critic_kwargs).to(device)
+        self.critic_net2 = self.configs.critic_net(**self.configs.critic_kwargs).to(
+            device
+        )
         self.critic_target_net2 = deepcopy(self.critic_net2)
 
         ## alpha
@@ -170,13 +181,18 @@ class SAC(AgentBase):
 
         ## optimizers
         self.actor_optimizer = torch.optim.Adam(
-            self.actor_net.parameters(), self.configs.lr_actor)
+            self.actor_net.parameters(), self.configs.lr_actor
+        )
         self.critic_optimizer1 = torch.optim.Adam(
-            self.critic_net1.parameters(), self.configs.lr_critic)
+            self.critic_net1.parameters(), self.configs.lr_critic
+        )
         self.critic_optimizer2 = torch.optim.Adam(
-            self.critic_net2.parameters(), self.configs.lr_critic)
-        self.log_alpha_optimizer = torch.optim.Adam([self.log_alpha], self.configs.lr_alpha)
-        
+            self.critic_net2.parameters(), self.configs.lr_critic
+        )
+        self.log_alpha_optimizer = torch.optim.Adam(
+            [self.log_alpha], self.configs.lr_alpha
+        )
+
         # the replay buffer
         self.buffer = ReplayBuffer(self.configs.buffer_size)
 
@@ -193,7 +209,9 @@ class SAC(AgentBase):
 
     def soft_update(self, target_net, current_net):
         for target, current in zip(target_net.parameters(), current_net.parameters()):
-            target.data.copy_(current.data * self.configs.tau + target.data * (1. - self.configs.tau))
+            target.data.copy_(
+                current.data * self.configs.tau + target.data * (1.0 - self.configs.tau)
+            )
 
     def train(self):
         if len(self.buffer) < self.configs.batch_size:
@@ -211,7 +229,9 @@ class SAC(AgentBase):
         next_log_prob = next_log_prob.sum(-1, keepdim=True)
         q1_target = self.critic_target_net1(next_state, next_action)
         q2_target = self.critic_target_net2(next_state, next_action)
-        q_target = reward + done * self.configs.gamma * (torch.min(q1_target, q2_target) - self.alpha.detach() * next_log_prob)
+        q_target = reward + done * self.configs.gamma * (
+            torch.min(q1_target, q2_target) - self.alpha.detach() * next_log_prob
+        )
 
         current_q1 = self.critic_net1(state, action)
         current_q2 = self.critic_net2(state, action)
@@ -231,7 +251,9 @@ class SAC(AgentBase):
         log_prob = log_prob.sum(-1, keepdim=True)
         q1_value = self.critic_net1(state, action_)
         q2_value = self.critic_net2(state, action_)
-        actor_loss = (self.alpha.detach() * log_prob - torch.min(q1_value, q2_value)).mean()
+        actor_loss = (
+            self.alpha.detach() * log_prob - torch.min(q1_value, q2_value)
+        ).mean()
 
         # update the actor network
         self.actor_optimizer.zero_grad()
@@ -240,7 +262,9 @@ class SAC(AgentBase):
 
         # optimize alpha
         if self.configs.learn_temperature:
-            alpha_loss = (self.alpha * (-log_prob - self.configs.target_entropy).detach()).mean()
+            alpha_loss = (
+                self.alpha * (-log_prob - self.configs.target_entropy).detach()
+            ).mean()
             self.log_alpha_optimizer.zero_grad()
             alpha_loss.backward()
             self.log_alpha_optimizer.step()
@@ -250,18 +274,21 @@ class SAC(AgentBase):
         self.soft_update(self.critic_target_net2, self.critic_net2)
 
     def save(self, path: str):
-        torch.save({
-            "actor_net": self.actor_net.state_dict(),
-            "actor_optimizer": self.actor_optimizer.state_dict(),
-            "critic_net1": self.critic_net1.state_dict(),
-            "critic_optimizer1": self.critic_optimizer1.state_dict(),
-            "critic_net2": self.critic_net2.state_dict(),
-            "critic_optimizer2": self.critic_optimizer2.state_dict(),
-            "log_alpha": self.log_alpha,
-            "log_alpha_optimizer": self.log_alpha_optimizer.state_dict()
-        }, path)
+        torch.save(
+            {
+                "actor_net": self.actor_net.state_dict(),
+                "actor_optimizer": self.actor_optimizer.state_dict(),
+                "critic_net1": self.critic_net1.state_dict(),
+                "critic_optimizer1": self.critic_optimizer1.state_dict(),
+                "critic_net2": self.critic_net2.state_dict(),
+                "critic_optimizer2": self.critic_optimizer2.state_dict(),
+                "log_alpha": self.log_alpha,
+                "log_alpha_optimizer": self.log_alpha_optimizer.state_dict(),
+            },
+            path,
+        )
 
-    def load(self, path: str, map_location = None):
+    def load(self, path: str, map_location=None):
         checkpoint = torch.load(path, map_location=map_location)
         self.actor_net.load_state_dict(checkpoint["actor_net"])
         self.actor_optimizer.load_state_dict(checkpoint["actor_optimizer"])

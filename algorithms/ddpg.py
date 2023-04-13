@@ -11,7 +11,7 @@ from rllib.replay_buffer.replay_buffer import ReplayBuffer
 from rllib.exploration.ornstein_uhlenbeck_noise import OrnsteinUhlenbeckNoise
 
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def linear_fanin(linear_layer: nn.Linear):
@@ -20,8 +20,12 @@ def linear_fanin(linear_layer: nn.Linear):
 
 class DDPGActor(nn.Module):
     def __init__(
-        self, state_dim: int, action_dim: int, hidden_size1: int, hidden_size2: int,
-        init_weight: float
+        self,
+        state_dim: int,
+        action_dim: int,
+        hidden_size1: int,
+        hidden_size2: int,
+        init_weight: float,
     ):
         super(DDPGActor, self).__init__()
         self.fc1 = nn.Linear(state_dim, hidden_size1)
@@ -29,14 +33,14 @@ class DDPGActor(nn.Module):
         self.fc3 = nn.Linear(hidden_size2, action_dim)
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
-        
+
         # initial weight and bias
         fc1_fanin = linear_fanin(self.fc1)
-        self.fc1.weight.data.uniform_(-1/np.sqrt(fc1_fanin), 1/np.sqrt(fc1_fanin))
-        self.fc1.bias.data.uniform_(-1/np.sqrt(fc1_fanin), 1/np.sqrt(fc1_fanin))
+        self.fc1.weight.data.uniform_(-1 / np.sqrt(fc1_fanin), 1 / np.sqrt(fc1_fanin))
+        self.fc1.bias.data.uniform_(-1 / np.sqrt(fc1_fanin), 1 / np.sqrt(fc1_fanin))
         fc2_fanin = linear_fanin(self.fc2)
-        self.fc2.weight.data.uniform_(-1/np.sqrt(fc2_fanin), 1/np.sqrt(fc2_fanin))
-        self.fc2.bias.data.uniform_(-1/np.sqrt(fc2_fanin), 1/np.sqrt(fc2_fanin))
+        self.fc2.weight.data.uniform_(-1 / np.sqrt(fc2_fanin), 1 / np.sqrt(fc2_fanin))
+        self.fc2.bias.data.uniform_(-1 / np.sqrt(fc2_fanin), 1 / np.sqrt(fc2_fanin))
         self.fc3.weight.data.uniform_(-init_weight, init_weight)
         self.fc3.bias.data.uniform_(-init_weight, init_weight)
 
@@ -46,7 +50,7 @@ class DDPGActor(nn.Module):
         x = self.tanh(self.fc3(x))
         return x
 
-    def action(self, state: torch.Tensor)  -> np.ndarray:
+    def action(self, state: torch.Tensor) -> np.ndarray:
         x = self.forward(state)
         action = x.detach().cpu().numpy()
         return action
@@ -54,25 +58,29 @@ class DDPGActor(nn.Module):
 
 class DDPGCritic(nn.Module):
     def __init__(
-        self, state_dim: int, action_dim: int, hidden_size1: int, hidden_size2: int,
-        init_weight: float
+        self,
+        state_dim: int,
+        action_dim: int,
+        hidden_size1: int,
+        hidden_size2: int,
+        init_weight: float,
     ):
         super(DDPGCritic, self).__init__()
-        self.fc1 = nn.Linear(state_dim+action_dim, hidden_size1)
+        self.fc1 = nn.Linear(state_dim + action_dim, hidden_size1)
         self.fc2 = nn.Linear(hidden_size1, hidden_size2)
         self.fc3 = nn.Linear(hidden_size2, 1)
         self.relu = nn.ReLU()
 
         # initial weight and bias
         fc1_fanin = linear_fanin(self.fc1)
-        self.fc1.weight.data.uniform_(-1/np.sqrt(fc1_fanin), 1/np.sqrt(fc1_fanin))
-        self.fc1.bias.data.uniform_(-1/np.sqrt(fc1_fanin), 1/np.sqrt(fc1_fanin))
+        self.fc1.weight.data.uniform_(-1 / np.sqrt(fc1_fanin), 1 / np.sqrt(fc1_fanin))
+        self.fc1.bias.data.uniform_(-1 / np.sqrt(fc1_fanin), 1 / np.sqrt(fc1_fanin))
         fc2_fanin = linear_fanin(self.fc2)
-        self.fc2.weight.data.uniform_(-1/np.sqrt(fc2_fanin), 1/np.sqrt(fc2_fanin))
-        self.fc2.bias.data.uniform_(-1/np.sqrt(fc2_fanin), 1/np.sqrt(fc2_fanin))
+        self.fc2.weight.data.uniform_(-1 / np.sqrt(fc2_fanin), 1 / np.sqrt(fc2_fanin))
+        self.fc2.bias.data.uniform_(-1 / np.sqrt(fc2_fanin), 1 / np.sqrt(fc2_fanin))
         self.fc3.weight.data.uniform_(-init_weight, init_weight)
         self.fc3.bias.data.uniform_(-init_weight, init_weight)
-        
+
     def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         x = torch.cat([state, action], 1)
         x = self.relu(self.fc1(x))
@@ -83,8 +91,8 @@ class DDPGCritic(nn.Module):
 
 
 class DDPGConfig(ConfigBase):
-    """Configuration of the DDPG model
-    """
+    """Configuration of the DDPG model"""
+
     def __init__(self, configs: dict):
         super().__init__()
 
@@ -108,9 +116,9 @@ class DDPGConfig(ConfigBase):
         ## hyper-parameters
         self.gamma: float = 0.99
         self.batch_size = 64
-        self.tau: float = 1e-3         # soft-update factors
+        self.tau: float = 1e-3  # soft-update factors
         self.buffer_size: int = int(1e6)
-        self.ou_theta = 0.15          # for exploration based on Ornstein–Uhlenbeck process
+        self.ou_theta = 0.15  # for exploration based on Ornstein–Uhlenbeck process
         self.ou_sigma = 0.2
         self.ou_step = 0.002
 
@@ -122,7 +130,7 @@ class DDPGConfig(ConfigBase):
             "action_dim": self.action_dim,
             "hidden_size1": 400,
             "hidden_size2": 300,
-            "init_weight": 3e-3
+            "init_weight": 3e-3,
         }
 
         ## critic net
@@ -133,7 +141,7 @@ class DDPGConfig(ConfigBase):
             "action_dim": self.action_dim,
             "hidden_size1": 400,
             "hidden_size2": 300,
-            "init_weight": 3e-4
+            "init_weight": 3e-4,
         }
 
         self.merge_configs(configs)
@@ -143,9 +151,10 @@ class DDPG(AgentBase):
     """Deep Deterministic Policy Gradient (DDPG)
     An implementation of DDPG based on the original paper 'Continuous control with deep reinforcement learning'
     """
+
     def __init__(self, configs: dict):
         super().__init__(DDPGConfig, configs)
-        
+
         # networks
         ## actor net
         self.actor_net = self.configs.actor_net(**self.configs.actor_kwargs).to(device)
@@ -156,16 +165,23 @@ class DDPG(AgentBase):
         self.critic_target_net = deepcopy(self.critic_net)
 
         ## optimizers
-        self.actor_optimizer = torch.optim.Adam(self.actor_net.parameters(), self.configs.lr_actor)
-        self.critic_optimizer = torch.optim.Adam(self.critic_net.parameters(), self.configs.lr_critic)
+        self.actor_optimizer = torch.optim.Adam(
+            self.actor_net.parameters(), self.configs.lr_actor
+        )
+        self.critic_optimizer = torch.optim.Adam(
+            self.critic_net.parameters(), self.configs.lr_critic
+        )
 
         # the replay buffer
         self.buffer = ReplayBuffer(self.configs.buffer_size)
 
         # exploration
         self.noise_generator = OrnsteinUhlenbeckNoise(
-            self.configs.action_dim, 
-            0, self.configs.ou_theta, self.configs.ou_sigma, self.configs.ou_step,
+            self.configs.action_dim,
+            0,
+            self.configs.ou_theta,
+            self.configs.ou_sigma,
+            self.configs.ou_step,
         )
 
     def get_action(self, state):
@@ -178,7 +194,9 @@ class DDPG(AgentBase):
 
     def soft_update(self, target_net, current_net):
         for target, current in zip(target_net.parameters(), current_net.parameters()):
-            target.data.copy_(current.data * self.configs.tau + target.data * (1. - self.configs.tau))
+            target.data.copy_(
+                current.data * self.configs.tau + target.data * (1.0 - self.configs.tau)
+            )
 
     def train(self):
         if len(self.buffer) < self.configs.batch_size:
@@ -212,19 +230,22 @@ class DDPG(AgentBase):
         self.soft_update(self.critic_target_net, self.critic_net)
 
     def save(self, path: str):
-        torch.save({
-            "actor_net": self.actor_net.state_dict(),
-            "actor_optimizer": self.actor_optimizer.state_dict(),
-            "critic_net": self.critic_net.state_dict(),
-            "critic_optimizer": self.critic_optimizer.state_dict(),
-        }, path)
+        torch.save(
+            {
+                "actor_net": self.actor_net.state_dict(),
+                "actor_optimizer": self.actor_optimizer.state_dict(),
+                "critic_net": self.critic_net.state_dict(),
+                "critic_optimizer": self.critic_optimizer.state_dict(),
+            },
+            path,
+        )
 
-    def load(self, path: str, map_location = None):
+    def load(self, path: str, map_location=None):
         checkpoint = torch.load(path, map_location=map_location)
         self.actor_net.load_state_dict(checkpoint["actor_net"])
         self.actor_optimizer.load_state_dict(checkpoint["actor_optimizer"])
         self.critic_net.load_state_dict(checkpoint["critic_net"])
         self.critic_optimizer.load_state_dict(checkpoint["critic_optimizer"])
-        
+
         self.actor_target_net = deepcopy(self.actor_net)
         self.critic_target_net = deepcopy(self.critic_net)

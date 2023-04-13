@@ -6,8 +6,12 @@ from rllib.algorithms.base.config import ConfigBase
 
 class EpsilonGreedy(object):
     def __init__(
-        self, epsilon: float = 0.1, reduce_epsilon: bool = True, 
-        initial_epsilon: float = 1, final_epsilon: float = 0.1, step_decay: int = int(1e7)
+        self,
+        epsilon: float = 0.1,
+        reduce_epsilon: bool = True,
+        initial_epsilon: float = 1,
+        final_epsilon: float = 0.1,
+        step_decay: int = int(1e7),
     ):
         self.reduce_epsilon = reduce_epsilon
         if self.reduce_epsilon:
@@ -19,8 +23,9 @@ class EpsilonGreedy(object):
             self.epsilon = epsilon
 
     def update_epsilon(self):
-        epsilon = self.initial_epsilon + \
-            self.step_cnt / self.step_decay * (self.final_epsilon - self.initial_epsilon)
+        epsilon = self.initial_epsilon + self.step_cnt / self.step_decay * (
+            self.final_epsilon - self.initial_epsilon
+        )
         return epsilon
 
     def explore(self, action, action_space):

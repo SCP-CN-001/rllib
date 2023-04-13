@@ -9,8 +9,8 @@ class ReplayBuffer:
         self.buffer = {}
         for item in self.items:
             self.buffer[item] = deque([], maxlen=buffer_size)
-    
-    def push(self, observations:tuple):
+
+    def push(self, observations: tuple):
         """Save a transition"""
         for i, item in enumerate(self.items):
             self.buffer[item].append(observations[i])
@@ -20,11 +20,11 @@ class ReplayBuffer:
         for item in self.items:
             batches[item] = []
         batches["next_state"] = []
-        
+
         for idx in idx_list:
             for item in self.items:
                 batches[item].append(self.buffer[item][idx])
-            batches["next_state"].append(self.buffer["state"][idx+1])
+            batches["next_state"].append(self.buffer["state"][idx + 1])
         for key in batches.keys():
             batches[key] = np.array(batches[key])
         return batches

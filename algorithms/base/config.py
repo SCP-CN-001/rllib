@@ -11,15 +11,13 @@ class ConfigBase:
         self.action_dim = None
 
         # model
-        self.gamma: float = 0.99    # reward discount factor
-        self.batch_size:int = 128   # batch size
-        self.lr: float = 1e-3           # learning rate
+        self.gamma: float = 0.99  # reward discount factor
+        self.batch_size: int = 128  # batch size
+        self.lr: float = 1e-3  # learning rate
 
         # explore
         self.explore: bool = True
-        self.explore_config: dict = {
-            "type": "StochasticSampling",
-        }
+        self.explore_config: dict = {"type": "StochasticSampling"}
 
         # evaluation
         self.evaluation_interval = None
