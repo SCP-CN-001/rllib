@@ -29,7 +29,7 @@ class PPOActor(nn.Module):
         hidden_size: int,
         dist_type: str = "gaussian",
     ):
-        super(PPOActor, self).__init__()
+        super().__init__()
         self.discrete = discrete
         self.dist_type = dist_type
 
@@ -106,7 +106,7 @@ class PPOActor(nn.Module):
 
 class PPOCritic(nn.Module):
     def __init__(self, state_dim: int, hidden_size: int):
-        super(PPOCritic, self).__init__()
+        super().__init__()
         self.fc1 = nn.Linear(state_dim, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
         self.fc3 = nn.Linear(hidden_size, 1)

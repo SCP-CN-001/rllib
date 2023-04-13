@@ -15,7 +15,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class QNetwork(nn.Module):
     def __init__(self, num_actions):
-        super(QNetwork, self).__init__()
+        super().__init__()
         self.net = nn.Sequential(
             nn.Conv2d(4, 32, 8, 4),
             nn.ReLU(),

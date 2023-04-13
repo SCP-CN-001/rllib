@@ -27,7 +27,7 @@ class DDPGActor(nn.Module):
         hidden_size2: int,
         init_weight: float,
     ):
-        super(DDPGActor, self).__init__()
+        super().__init__()
         self.fc1 = nn.Linear(state_dim, hidden_size1)
         self.fc2 = nn.Linear(hidden_size1, hidden_size2)
         self.fc3 = nn.Linear(hidden_size2, action_dim)
@@ -65,7 +65,7 @@ class DDPGCritic(nn.Module):
         hidden_size2: int,
         init_weight: float,
     ):
-        super(DDPGCritic, self).__init__()
+        super().__init__()
         self.fc1 = nn.Linear(state_dim + action_dim, hidden_size1)
         self.fc2 = nn.Linear(hidden_size1, hidden_size2)
         self.fc3 = nn.Linear(hidden_size2, 1)

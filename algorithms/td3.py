@@ -15,7 +15,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class TD3Actor(nn.Module):
     def __init__(self, state_dim: int, action_dim: int, hidden_size: int):
-        super(TD3Actor, self).__init__()
+        super().__init__()
 
         self.net = nn.Sequential(
             nn.Linear(state_dim, hidden_size),
@@ -39,7 +39,7 @@ class TD3Actor(nn.Module):
 
 class TD3Critic(nn.Module):
     def __init__(self, state_dim: int, action_dim: int, hidden_size: int):
-        super(TD3Critic, self).__init__()
+        super().__init__()
 
         self.net = nn.Sequential(
             nn.Linear(state_dim + action_dim, hidden_size),

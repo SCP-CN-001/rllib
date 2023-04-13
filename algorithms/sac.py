@@ -25,7 +25,7 @@ class SACActor(nn.Module):
         log_std_max: float,
         epsilon: float,
     ):
-        super(SACActor, self).__init__()
+        super().__init__()
         self.log_std_min = log_std_min
         self.log_std_max = log_std_max
         self.epsilon = epsilon
@@ -76,7 +76,7 @@ class SACActor(nn.Module):
 
 class SACCritic(nn.Module):
     def __init__(self, state_dim: int, action_dim: int, hidden_size: int):
-        super(SACCritic, self).__init__()
+        super().__init__()
 
         self.net = nn.Sequential(
             nn.Linear(state_dim + action_dim, hidden_size),
