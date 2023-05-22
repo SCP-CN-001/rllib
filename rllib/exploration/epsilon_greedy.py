@@ -1,7 +1,4 @@
 import random
-import math
-
-from rllib.algorithms.base.config import ConfigBase
 
 
 class EpsilonGreedy(object):
@@ -11,7 +8,7 @@ class EpsilonGreedy(object):
         reduce_epsilon: bool = True,
         initial_epsilon: float = 1,
         final_epsilon: float = 0.1,
-        step_decay: int = int(1e7),
+        step_decay: int = int(1e6),
     ):
         self.reduce_epsilon = reduce_epsilon
         if self.reduce_epsilon:

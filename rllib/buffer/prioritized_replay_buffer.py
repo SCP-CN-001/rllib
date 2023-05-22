@@ -1,7 +1,7 @@
-from rllib.replay_buffer.random_replay_buffer import ReplayBuffer
+from rllib.interface import BufferBase
 from rllib.utils.sum_tree import SumTree
 
 
-class PrioritizedReplayBuffer(ReplayBuffer):
+class PrioritizedReplayBuffer(BufferBase):
     def __init__(self, buffer_size: int, extra_items: list = ...):
         super().__init__(buffer_size, extra_items)

@@ -1,12 +1,10 @@
 from abc import ABC, abstractmethod
 
-from rllib.interface import ConfigBase
-
 
 class AgentBase(ABC):
     """This abstract class provide a base agent for all RL algorithms."""
     @abstractmethod
-    def __init__(self, configs: ConfigBase):
+    def __init__(self, configs):
         """Initialize the model structure here"""
 
     @abstractmethod
