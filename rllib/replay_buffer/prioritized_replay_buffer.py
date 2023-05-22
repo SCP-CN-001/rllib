@@ -1,4 +1,4 @@
-from rllib.replay_buffer.replay_buffer import ReplayBuffer
+from rllib.replay_buffer.random_replay_buffer import ReplayBuffer
 from rllib.utils.sum_tree import SumTree
 
 

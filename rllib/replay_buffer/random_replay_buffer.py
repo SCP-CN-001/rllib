@@ -2,8 +2,10 @@ from collections import deque
 
 import numpy as np
 
+from rllib.interface.buffer_base import BufferBase
 
-class ReplayBuffer:
+
+class RandomReplayBuffer(BufferBase):
     def __init__(self, buffer_size: int, extra_items: list = []):
         self.items = ["state", "action", "reward", "done"] + extra_items
         self.buffer = {}

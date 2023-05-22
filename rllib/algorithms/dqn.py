@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from rllib.algorithms.base.config import ConfigBase
-from rllib.algorithms.base.agent import AgentBase
-from rllib.replay_buffer.replay_buffer import ReplayBuffer
+from rllib.interface.agent_base import AgentBase
+from rllib.interface.config_base import ConfigBase
+from rllib.replay_buffer.random_replay_buffer import ReplayBuffer
 from rllib.exploration.epsilon_greedy import EpsilonGreedy
 
 

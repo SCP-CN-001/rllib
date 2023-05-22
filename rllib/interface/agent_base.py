@@ -1,13 +1,13 @@
 from abc import ABC, abstractmethod
 
-from rllib.algorithms.base.config import ConfigBase
+from rllib.interface import ConfigBase
 
 
 class AgentBase(ABC):
     """This abstract class provide a base agent for all RL algorithms."""
-    def __init__(self, config_type: ConfigBase, configs: dict):
+    @abstractmethod
+    def __init__(self, configs: ConfigBase):
         """Initialize the model structure here"""
-        self.configs = config_type(configs)
 
     @abstractmethod
     def get_action(self, state):
