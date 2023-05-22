@@ -4,6 +4,7 @@ from rllib.algorithms.base.config import ConfigBase
 
 
 class AgentBase(ABC):
+    """This abstract class provide a base agent for all RL algorithms."""
     def __init__(self, config_type: ConfigBase, configs: dict):
         """Initialize the model structure here"""
         self.configs = config_type(configs)
