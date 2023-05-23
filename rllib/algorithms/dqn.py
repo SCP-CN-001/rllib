@@ -136,13 +136,13 @@ class DQN(AgentBase):
 
         batches = self.buffer.sample(self.configs.batch_size)
         state = torch.FloatTensor(batches["state"]).to(device)
-        action = torch.LongTensor(batches["action"]).to(device)
+        action = torch.FloatTensor(batches["action"]).to(device)
         reward = torch.FloatTensor(batches["reward"]).to(device)
         next_state = torch.FloatTensor(batches["next_state"]).to(device)
         done = torch.FloatTensor(batches["done"]).to(device)
 
         # loss function
-        q_value = self.policy_net(state)[range(self.configs.batch_size), action]
+        q_value = self.policy_net(state)[range(self.configs.batch_size), action.long()]
         q_next = self.target_net(next_state).max(-1)[0]
         q_target = reward + self.configs.gamma * done * q_next
         loss = F.smooth_l1_loss(q_value, q_target)

@@ -35,7 +35,7 @@ class RandomReplayBuffer(BufferBase):
             batches["next_state"].append(self.buffer["state"][idx + 1])
 
         for name in batches.keys():
-            batches[name] = np.array(batches[name])
+            batches[name] = np.array(batches[name], dtype=np.float32)
 
         return batches
 
@@ -52,7 +52,7 @@ class RandomReplayBuffer(BufferBase):
     def all(self):
         batches = {}
         for key, value in self.buffer.items():
-            batches[key] = np.array(list(value))
+            batches[key] = np.array(list(value), dtype=np.float32)
         return batches
 
     def clear(self):
