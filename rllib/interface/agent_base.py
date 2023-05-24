@@ -3,9 +3,9 @@ from abc import ABC, abstractmethod
 
 class AgentBase(ABC):
     """This abstract class provide a base agent for all RL algorithms."""
-    @abstractmethod
     def __init__(self, configs):
         """Initialize the model structure here"""
+        self.configs = configs
 
     @abstractmethod
     def get_action(self, state):

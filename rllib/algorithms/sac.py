@@ -7,9 +7,9 @@ import torch.nn as nn
 from torch.distributions import Normal
 import torch.nn.functional as F
 
-from rllib.algorithms.base.agent import AgentBase
-from rllib.algorithms.base.config import ConfigBase
-from rllib.replay_buffer.random_replay_buffer import ReplayBuffer
+from rllib.interface import AgentBase
+from rllib.interface import ConfigBase
+from rllib.buffer import RandomReplayBuffer
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -116,7 +116,7 @@ class SACConfig(ConfigBase):
         # model
         ## hyper-parameters
         self.gamma: float = 0.99
-        self.batch_size: int = 128
+        self.batch_size: int = 256
         self.tau: float = 5e-3  # soft-update factor
         self.buffer_size: int = int(1e6)
 
@@ -156,9 +156,10 @@ class SAC(AgentBase):
     """Soft Actor-Critic (SAC)
     An implementation of SAC based on the 2nd version of SAC paper 'Soft Actor-Critic Algorithms and Applications'
     """
+    name = "SAC"
 
     def __init__(self, configs: dict):
-        super().__init__(SACConfig, configs)
+        super().__init__(configs)
 
         # networks
         ## actor net
@@ -194,7 +195,7 @@ class SAC(AgentBase):
         )
 
         # the replay buffer
-        self.buffer = ReplayBuffer(self.configs.buffer_size)
+        self.buffer = RandomReplayBuffer(self.configs.buffer_size)
 
     @property
     def alpha(self):

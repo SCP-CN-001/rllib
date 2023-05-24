@@ -98,7 +98,7 @@ class DQN(AgentBase):
     name = "DQN"
 
     def __init__(self, configs: DQNConfig):
-        self.configs = configs
+        super().__init__(configs)
 
         # networks
         self.policy_net = self.configs.q_net(**self.configs.q_net_kwargs).to(device)

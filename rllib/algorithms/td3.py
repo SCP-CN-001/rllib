@@ -5,9 +5,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from rllib.algorithms.base.config import ConfigBase
-from rllib.algorithms.base.agent import AgentBase
-from rllib.replay_buffer.random_replay_buffer import ReplayBuffer
+from rllib.interface import AgentBase
+from rllib.interface import ConfigBase
+from rllib.buffer import RandomReplayBuffer
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -105,7 +105,7 @@ class TD3Config(ConfigBase):
 
 class TD3(AgentBase):
     def __init__(self, configs: dict):
-        super().__init__(TD3Config, configs)
+        super().__init__(configs)
 
         # networks
         ## actor net
@@ -136,7 +136,7 @@ class TD3(AgentBase):
         )
 
         # the replay buffer
-        self.buffer = ReplayBuffer(self.configs.buffer_size)
+        self.buffer = RandomReplayBuffer(self.configs.buffer_size)
 
         # exploration
         self.explore_noise_sigma = self.configs.explore_noise_sigma

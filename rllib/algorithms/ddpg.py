@@ -5,9 +5,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from rllib.algorithms.base.config import ConfigBase
-from rllib.algorithms.base.agent import AgentBase
-from rllib.replay_buffer.random_replay_buffer import ReplayBuffer
+from rllib.interface import AgentBase
+from rllib.interface import ConfigBase
+from rllib.buffer import RandomReplayBuffer
 from rllib.exploration.ornstein_uhlenbeck_noise import OrnsteinUhlenbeckNoise
 
 
@@ -151,9 +151,10 @@ class DDPG(AgentBase):
     """Deep Deterministic Policy Gradient (DDPG)
     An implementation of DDPG based on the original paper 'Continuous control with deep reinforcement learning'
     """
+    name = "DDPG"
 
-    def __init__(self, configs: dict):
-        super().__init__(DDPGConfig, configs)
+    def __init__(self, configs: DDPGConfig):
+        super().__init__(configs)
 
         # networks
         ## actor net
@@ -173,7 +174,7 @@ class DDPG(AgentBase):
         )
 
         # the replay buffer
-        self.buffer = ReplayBuffer(self.configs.buffer_size)
+        self.buffer = RandomReplayBuffer(self.configs.buffer_size)
 
         # exploration
         self.noise_generator = OrnsteinUhlenbeckNoise(
