@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# @File: sac.py
+# @Description: This file implements the original SAC algorithm following the paper 'Soft Actor-Critic Algorithms and Applications'.
+# @Time: 2023/05/24
+# @Author: Yueyuan Li
+
 from copy import deepcopy
 from typing import Tuple
 
@@ -94,8 +101,6 @@ class SACCritic(nn.Module):
 
 
 class SACConfig(ConfigBase):
-    """Configuration of the SAC model"""
-
     def __init__(self, configs: dict):
         super().__init__()
 
@@ -153,9 +158,6 @@ class SACConfig(ConfigBase):
 
 
 class SAC(AgentBase):
-    """Soft Actor-Critic (SAC)
-    An implementation of SAC based on the 2nd version of SAC paper 'Soft Actor-Critic Algorithms and Applications'
-    """
     name = "SAC"
 
     def __init__(self, configs: dict):

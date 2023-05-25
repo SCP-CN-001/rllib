@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# @File: ddpg.py
+# @Description: This script implements the original DDPG algorithm following the paper 'Continuous control with deep reinforcement learning'.
+# @Time: 2023/05/24
+# @Author: Yueyuan Li
+
 from copy import deepcopy
 
 import numpy as np
@@ -91,8 +98,6 @@ class DDPGCritic(nn.Module):
 
 
 class DDPGConfig(ConfigBase):
-    """Configuration of the DDPG model"""
-
     def __init__(self, configs: dict):
         super().__init__()
 
@@ -148,9 +153,6 @@ class DDPGConfig(ConfigBase):
 
 
 class DDPG(AgentBase):
-    """Deep Deterministic Policy Gradient (DDPG)
-    An implementation of DDPG based on the original paper 'Continuous control with deep reinforcement learning'
-    """
     name = "DDPG"
 
     def __init__(self, configs: DDPGConfig):

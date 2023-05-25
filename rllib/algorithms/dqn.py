@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # @File: dqn.py
-# @Description: This file implements the original DQN algorithm following the Nature released version of DQN paper 'Human-level control through deep reinforcement learning'
+# @Description: This file implements the original DQN algorithm following the Nature released version of DQN paper 'Human-level control through deep reinforcement learning'.
 # @Time: 2023/05/22
 # @Author: Yueyuan Li
 
@@ -23,10 +23,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class QNetwork(nn.Module):
     """The Q-network used in the original DQN paper"""
-    def __init__(self, num_actions: int):
+    def __init__(self, num_channels: int, num_actions: int):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Conv2d(4, 32, 8, 4),
+            nn.Conv2d(num_channels, 32, 8, 4),
             nn.ReLU(),
             nn.Conv2d(32, 64, 4, 2),
             nn.ReLU(),
@@ -81,10 +81,12 @@ class DQNConfig(ConfigBase):
 
         ## networks
         self.lr = 2.5e-4
-        self.momentum = 0.95
         self.eps = 0.01
         self.q_net = QNetwork
-        self.q_net_kwargs = {"num_actions": self.num_actions}
+        self.q_net_kwargs = {
+            "num_channels": 4,
+            "num_actions": self.num_actions
+        }
         self.target_update_freq = 1e4
 
         # tricks
@@ -109,7 +111,6 @@ class DQN(AgentBase):
         self.optimizer = torch.optim.RMSprop(
             self.policy_net.parameters(),
             lr=self.configs.lr,
-            momentum=self.configs.momentum,
             eps=self.configs.eps,
         )
 

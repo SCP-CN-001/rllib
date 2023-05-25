@@ -12,7 +12,7 @@ class RandomReplayBuffer(BufferBase):
         self.buffer = {}
         for item in self.items:
             self.buffer[item] = deque([], maxlen=buffer_size)
-        
+
     def __len__(self):
         return min(self.cnt, self.buffer_size)
 

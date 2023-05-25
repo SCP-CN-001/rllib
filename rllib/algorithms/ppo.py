@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# @File: ppo.py
+# @Description: This script implement the PPO algorithm following the paper 'Proximal Policy Optimization Algorithms'. Because the original paper is not very clear, the implementation also refers to the paper 'Implementation Matters in Deep Policy Gradients: A Case Study on PPO and TRPO'.
+# @Time: 2023/05/24
+# @Author: Yueyuan Li
+
 from copy import deepcopy
 
 import numpy as np
@@ -7,17 +14,17 @@ import torch.nn.functional as F
 from torch.distributions import Categorical, Normal, Beta
 from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 
-from rllib.algorithms.base.config import ConfigBase
-from rllib.algorithms.base.agent import AgentBase
-from rllib.replay_buffer.random_replay_buffer import ReplayBuffer
+from rllib.interface import AgentBase
+from rllib.interface import ConfigBase
+from rllib.buffer import RandomReplayBuffer
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def orthogonal_init(layer, gain=1.0):
-    nn.init.orthogonal_(layer.weight, gain=gain)
-    nn.init.constant_(layer.bias, 0)
+    nn.init.orthogonal_(layer.weight.data, gain=gain)
+    nn.init.constant_(layer.bias.data, 0)
 
 
 class PPOActor(nn.Module):
@@ -125,8 +132,6 @@ class PPOCritic(nn.Module):
 
 
 class PPOConfig(ConfigBase):
-    """Configuration of the PPO model"""
-
     def __init__(self, configs):
         super().__init__()
 
@@ -146,11 +151,13 @@ class PPOConfig(ConfigBase):
 
         # model
         ## hyper-parameters
+        ## Here use the PPO hyper-parameters from Mujoco as default values
         self.discrete = configs["discrete"] if "discrete" in configs.keys() else False
         self.dist_type = "gaussian"
         self.horizon = 2048
         self.epoch = 10
         self.batch_size = 64
+        self.gamma = 0.99
         self.gae_lambda = 0.95
         self.clip_epsilon = 0.2
 
@@ -186,13 +193,7 @@ class PPOConfig(ConfigBase):
 
 
 class PPO(AgentBase):
-    """Proximal Policy Optimization (PPO)
-    An implementation of PPO based on the original paper 'Proximal Policy Optimization Algorithms'.
-
-    The performance of the minimal PPO is not good, so the tricks from 'Implementation
-    Matters in Deep Policy Gradients: A Case Study on PPO and TRPO' are also implemented
-    and controlled by the PPOConfig.
-    """
+    name = "PPO"
 
     def __init__(self, configs: dict) -> None:
         super().__init__(PPOConfig, configs)
@@ -213,7 +214,7 @@ class PPO(AgentBase):
         )
 
         ## buffer
-        self.buffer = ReplayBuffer(self.configs.horizon, extra_items=["log_prob"])
+        self.buffer = RandomReplayBuffer(self.configs.horizon, extra_items=["log_prob"])
 
     def get_action(self, state):
         if not isinstance(state, torch.Tensor):
@@ -248,7 +249,7 @@ class PPO(AgentBase):
                 reversed(deltas.detach().cpu().numpy()),
                 reversed(done.detach().cpu().numpy()),
             ):
-                gae = delta + self.configs.gamma * is_done * self.configs.gae_lambda * gae
+                gae = delta + (self.configs.gamma * is_done * self.configs.gae_lambda) * gae
                 advantage.append(gae)
             advantage.reverse()
             advantage = torch.FloatTensor(np.array(advantage)).to(device)

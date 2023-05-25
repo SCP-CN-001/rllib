@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# @File: td3.py
+# @Description: This script implement the original TD3 algorithm following the paper 'Addressing Function Approximation Error in Actor-Critic Methods'.
+# @Time: 2023/05/24
+# @Author: Yueyuan Li
+
 from copy import deepcopy
 
 import numpy as np
@@ -104,6 +111,8 @@ class TD3Config(ConfigBase):
 
 
 class TD3(AgentBase):
+    name = "TD3"
+
     def __init__(self, configs: dict):
         super().__init__(configs)
 
