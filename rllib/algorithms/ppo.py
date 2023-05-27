@@ -94,19 +94,7 @@ class PPOConfig(ConfigBase):
     def __init__(self, configs: dict):
         super().__init__()
 
-        for key in ["state_space", "action_space"]:
-            if key in configs:
-                setattr(self, key, configs[key])
-            else:
-                raise AttributeError("[%s] is not defined for PPOConfig!" % key)
-        if "state_dim" not in configs.keys():
-            self.state_dim = self.state_space.shape[0]
-        else:
-            self.state_dim = configs["state_dim"]
-        if "action_dim" not in configs.keys():
-            self.action_dim = self.action_space.shape[0]
-        else:
-            self.action_dim = configs["action_dim"]
+        self.set_env(configs)
 
         # model
         ## hyper-parameters
