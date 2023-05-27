@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # @File: dqn.py
-# @Description: This file implements the original DQN algorithm following the Nature released version of DQN paper 'Human-level control through deep reinforcement learning'.
+# @Description: This script implements the original DQN algorithm following the Nature released version of DQN paper 'Human-level control through deep reinforcement learning'.
 # @Time: 2023/05/22
 # @Author: Yueyuan Li
 
@@ -21,7 +21,7 @@ from rllib.exploration import EpsilonGreedy
 class QNetwork(nn.Module):
     """The Q-network used in the original DQN paper"""
 
-    def __init__(self, num_channels: int, num_actions: int):
+    def __init__(self, num_channels: int, action_dim: int):
         super().__init__()
         self.net = nn.Sequential(
             nn.Conv2d(num_channels, 32, 8, 4),
@@ -33,7 +33,7 @@ class QNetwork(nn.Module):
             nn.Flatten(),
             nn.Linear(7 * 7 * 64, 512),
             nn.ReLU(),
-            nn.Linear(512, num_actions),
+            nn.Linear(512, action_dim),
         )
 
     def forward(self, state: torch.Tensor) -> torch.Tensor:
@@ -48,20 +48,10 @@ class QNetwork(nn.Module):
 
 
 class DQNConfig(ConfigBase):
-    """Configuration of the DQN model"""
-
     def __init__(self, configs: dict):
         super().__init__()
 
-        for key in ["state_space", "action_space"]:
-            try:
-                setattr(self, key, configs[key])
-            except:
-                raise AttributeError(f"{key} is not defined for DQN Config!")
-        if "action_dim" not in configs.keys():
-            self.num_actions = self.action_space.n
-        else:
-            self.num_actions = configs["action_dim"]
+        self.set_env(configs)
 
         # model
         ## hyper-parameters
@@ -75,14 +65,14 @@ class DQNConfig(ConfigBase):
             "final_epsilon": 0.1,
             "step_decay": int(1e6),
         }
-        self.replay_start_size = 5e4
+        self.n_initial_exploration_steps = 5e4
         self.buffer_size: int = int(1e6)
 
         ## networks
         self.lr = 2.5e-4
         self.eps = 0.01
         self.q_net = QNetwork
-        self.q_net_kwargs = {"num_channels": 4, "num_actions": self.num_actions}
+        self.q_net_kwargs = {"num_channels": 4, "action_dim": self.action_dim}
         self.target_update_freq = 1e4
 
         # tricks
@@ -126,7 +116,7 @@ class DQN(AgentBase):
         return action
 
     def train(self):
-        if len(self.buffer) < self.configs.replay_start_size:
+        if len(self.buffer) < self.configs.n_initial_exploration_steps:
             return
 
         batches = self.buffer.sample(self.configs.batch_size)
