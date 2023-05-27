@@ -2,9 +2,7 @@ import numpy as np
 
 
 class OrnsteinUhlenbeckNoise:
-    def __init__(
-        self, action_dim: int, mu: float, theta: float, sigma: float, step: float
-    ):
+    def __init__(self, action_dim: int, mu: float, theta: float, sigma: float, step: float):
         self.action_dim = action_dim
         self.mu = mu
         self.theta = theta

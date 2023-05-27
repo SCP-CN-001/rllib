@@ -18,11 +18,9 @@ from rllib.buffer import RandomReplayBuffer
 from rllib.exploration import EpsilonGreedy
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
 class QNetwork(nn.Module):
     """The Q-network used in the original DQN paper"""
+
     def __init__(self, num_channels: int, num_actions: int):
         super().__init__()
         self.net = nn.Sequential(
@@ -51,6 +49,7 @@ class QNetwork(nn.Module):
 
 class DQNConfig(ConfigBase):
     """Configuration of the DQN model"""
+
     def __init__(self, configs: dict):
         super().__init__()
 
@@ -83,10 +82,7 @@ class DQNConfig(ConfigBase):
         self.lr = 2.5e-4
         self.eps = 0.01
         self.q_net = QNetwork
-        self.q_net_kwargs = {
-            "num_channels": 4,
-            "num_actions": self.num_actions
-        }
+        self.q_net_kwargs = {"num_channels": 4, "num_actions": self.num_actions}
         self.target_update_freq = 1e4
 
         # tricks
@@ -99,19 +95,17 @@ class DQNConfig(ConfigBase):
 class DQN(AgentBase):
     name = "DQN"
 
-    def __init__(self, configs: DQNConfig):
-        super().__init__(configs)
+    def __init__(self, configs: DQNConfig, device: torch.device = torch.device("cpu")):
+        super().__init__(configs, device)
 
         # networks
-        self.policy_net = self.configs.q_net(**self.configs.q_net_kwargs).to(device)
+        self.policy_net = self.configs.q_net(**self.configs.q_net_kwargs).to(self.device)
         self.target_net = deepcopy(self.policy_net)
         self.update_cnt = 0
 
         # optimizer
         self.optimizer = torch.optim.RMSprop(
-            self.policy_net.parameters(),
-            lr=self.configs.lr,
-            eps=self.configs.eps,
+            self.policy_net.parameters(), lr=self.configs.lr, eps=self.configs.eps
         )
 
         # the replay buffer
@@ -123,7 +117,7 @@ class DQN(AgentBase):
 
     def get_action(self, state):
         if not isinstance(state, torch.Tensor):
-            state = torch.FloatTensor(state).unsqueeze(0).to(device)
+            state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
 
         action = self.policy_net.action(state)
         if self.configs.explore:
@@ -136,16 +130,16 @@ class DQN(AgentBase):
             return
 
         batches = self.buffer.sample(self.configs.batch_size)
-        state = torch.FloatTensor(batches["state"]).to(device)
-        action = torch.FloatTensor(batches["action"]).to(device)
-        reward = torch.FloatTensor(batches["reward"]).to(device)
-        next_state = torch.FloatTensor(batches["next_state"]).to(device)
-        done = torch.FloatTensor(batches["done"]).to(device)
+        state = torch.FloatTensor(batches["state"]).to(self.device)
+        action = torch.FloatTensor(batches["action"]).to(self.device)
+        reward = torch.FloatTensor(batches["reward"]).to(self.device)
+        next_state = torch.FloatTensor(batches["next_state"]).to(self.device)
+        done = torch.FloatTensor(batches["done"]).to(self.device)
 
         # loss function
         q_value = self.policy_net(state)[range(self.configs.batch_size), action.long()]
         q_next = self.target_net(next_state).max(-1)[0]
-        q_target = reward + self.configs.gamma * done * q_next
+        q_target = reward + self.configs.gamma * (1 - done) * q_next
         loss = F.smooth_l1_loss(q_value, q_target)
 
         # optimization
@@ -163,10 +157,7 @@ class DQN(AgentBase):
 
     def save(self, path: str):
         torch.save(
-            {
-                "policy_net": self.policy_net.state_dict(),
-                "optimizer": self.optimizer.state_dict(),
-            },
+            {"policy_net": self.policy_net.state_dict(), "optimizer": self.optimizer.state_dict()},
             path,
         )
 

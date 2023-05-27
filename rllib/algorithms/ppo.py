@@ -2,107 +2,62 @@
 # -*- coding: utf-8 -*-
 # @File: ppo.py
 # @Description: This script implement the PPO algorithm following the paper 'Proximal Policy Optimization Algorithms'. Because the original paper is not very clear, the implementation also refers to the paper 'Implementation Matters in Deep Policy Gradients: A Case Study on PPO and TRPO'.
-# @Time: 2023/05/24
+# @Time: 2023/05/26
 # @Author: Yueyuan Li
-
-from copy import deepcopy
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions import Categorical, Normal, Beta
-from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
+from torch.distributions import Categorical, Normal
 
 from rllib.interface import AgentBase
 from rllib.interface import ConfigBase
 from rllib.buffer import RandomReplayBuffer
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-def orthogonal_init(layer, gain=1.0):
-    nn.init.orthogonal_(layer.weight.data, gain=gain)
-    nn.init.constant_(layer.bias.data, 0)
+def orthogonal_init(layer, gain: float = np.sqrt(2), constant: float = 0.0):
+    nn.init.orthogonal_(layer.weight.data, gain)
+    nn.init.constant_(layer.bias.data, constant)
+    return layer
 
 
 class PPOActor(nn.Module):
-    def __init__(
-        self,
-        discrete: bool,
-        state_dim: int,
-        action_dim: int,
-        hidden_size: int,
-        dist_type: str = "gaussian",
-    ):
+    def __init__(self, state_dim: int, action_dim: int, hidden_size: int, continuous: bool):
         super().__init__()
-        self.discrete = discrete
-        self.dist_type = dist_type
 
-        self.fc1 = nn.Linear(state_dim, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.tanh = nn.Tanh()
+        self.continuous = continuous
 
-        orthogonal_init(self.fc1)
-        orthogonal_init(self.fc2)
+        self.net = nn.Sequential(
+            orthogonal_init(nn.Linear(state_dim, hidden_size)),
+            nn.Tanh(),
+            orthogonal_init(nn.Linear(hidden_size, hidden_size)),
+            nn.Tanh(),
+            orthogonal_init(nn.Linear(hidden_size, action_dim), 0.01),
+            nn.Tanh() if self.continuous else nn.Softmax(dim=-1),
+        )
 
-        if discrete:
-            self.out_layer = nn.Linear(hidden_size, action_dim)
-            orthogonal_init(self.out_layer)
-        else:
-            if self.dist_type == "gaussian":
-                self.mean_layer = nn.Linear(hidden_size, action_dim)
-                orthogonal_init(self.mean_layer, gain=0.01)
-                self.log_std = nn.Parameter(torch.zeros(action_dim))
-            elif self.dist_type == "beta":
-                self.alpha_layer = nn.Linear(hidden_size, action_dim)
-                self.beta_layer = nn.Linear(hidden_size, action_dim)
-                orthogonal_init(self.alpha_layer, gain=0.01)
-                orthogonal_init(self.beta_layer, gain=0.01)
-            else:
-                raise NotImplementedError
+        if self.continuous:
+            self.log_std = nn.Parameter(torch.zeros(action_dim))
 
     def forward(self, state: torch.Tensor):
-        x = self.tanh(self.fc1(state))
-        x = self.tanh(self.fc2(x))
-
-        if self.discrete:
-            x = self.out_layer(x)
-            a_prob = torch.softmax(x, dim=1)
-            return a_prob
-        else:
-            if self.dist_type == "gaussian":
-                mean = torch.tanh(self.mean_layer(x))
-                return mean
-            elif self.dist_type == "beta":
-                alpha = F.softplus(self.alpha_layer(x)) + 1.0
-                beta = F.softplus(self.beta_layer(x)) + 1.0
-                return alpha, beta
-            else:
-                raise NotImplementedError
+        x = self.net(state)
+        return x
 
     def get_dist(self, state: torch.Tensor):
-        if self.discrete:
-            dist = Categorical(self.forward(state))
+        if self.continuous:
+            mean = self.forward(state)
+            std = self.log_std.expand_as(mean).exp()
+            dist = Normal(mean, std)
         else:
-            if self.dist_type == "gaussian":
-                mean = self.forward(state)
-                log_std = self.log_std.expand_as(mean)
-                std = torch.exp(log_std)
-                dist = Normal(mean, std)
-            elif self.dist_type == "beta":
-                alpha, beta = self.forward(state)
-                dist = Beta(alpha, beta)
-            else:
-                raise NotImplementedError
+            probs = self.forward(state)
+            dist = Categorical(probs)
+
         return dist
 
     def action(self, state: torch.Tensor):
         dist = self.get_dist(state)
         action = dist.sample()
-        if not self.discrete and self.dist_type == "gaussian":
-            action = torch.clamp(action, -1, 1)
         log_prob = dist.log_prob(action)
 
         action = action.detach().cpu().numpy()
@@ -110,36 +65,40 @@ class PPOActor(nn.Module):
 
         return action, log_prob
 
+    def evaluate(self, state: torch.Tensor, action: torch.Tensor):
+        dist = self.get_dist(state)
+        log_prob = dist.log_prob(action)
+        entropy = dist.entropy()
+
+        return log_prob, entropy
+
 
 class PPOCritic(nn.Module):
-    def __init__(self, state_dim: int, hidden_size: int):
+    def __init__(self, state_dim: int, hidden_size: int) -> None:
         super().__init__()
-        self.fc1 = nn.Linear(state_dim, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc3 = nn.Linear(hidden_size, 1)
-        self.tanh = nn.Tanh()
 
-        orthogonal_init(self.fc1)
-        orthogonal_init(self.fc2)
-        orthogonal_init(self.fc3)
+        self.net = nn.Sequential(
+            orthogonal_init(nn.Linear(state_dim, hidden_size)),
+            nn.Tanh(),
+            orthogonal_init(nn.Linear(hidden_size, hidden_size)),
+            nn.Tanh(),
+            orthogonal_init(nn.Linear(hidden_size, 1)),
+        )
 
-    def forward(self, state: torch.Tensor) -> torch.Tensor:
-        x = self.tanh(self.fc1(state))
-        x = self.tanh(self.fc2(x))
-        x = self.fc3(x)
-
+    def forward(self, state: torch.Tensor):
+        x = self.net(state)
         return x
 
 
 class PPOConfig(ConfigBase):
-    def __init__(self, configs):
+    def __init__(self, configs: dict):
         super().__init__()
 
         for key in ["state_space", "action_space"]:
             if key in configs:
                 setattr(self, key, configs[key])
             else:
-                raise AttributeError("[%s] is not defined for SACConfig!" % key)
+                raise AttributeError("[%s] is not defined for PPOConfig!" % key)
         if "state_dim" not in configs.keys():
             self.state_dim = self.state_space.shape[0]
         else:
@@ -152,24 +111,34 @@ class PPOConfig(ConfigBase):
         # model
         ## hyper-parameters
         ## Here use the PPO hyper-parameters from Mujoco as default values
-        self.discrete = configs["discrete"] if "discrete" in configs.keys() else False
-        self.dist_type = "gaussian"
+        self.continuos = True
+        self.num_epochs = 10
         self.horizon = 2048
-        self.epoch = 10
         self.batch_size = 64
         self.gamma = 0.99
         self.gae_lambda = 0.95
         self.clip_epsilon = 0.2
+        self.vf_coef = 0.5
+        self.entropy_coef = 0.0
+
+        ## Here are the hyper-parameters for Atari games
+        # self.continuos = False
+        # self.num_epochs = 3
+        # self.horizon = 128
+        # self.batch_size = 32
+        # self.gamma = 0.99
+        # self.gae_lambda = 0.95
+        # self.clip_epsilon = 0.2
+        # self.vf_coef = 1
+        # self.entropy_coef = 0.01
 
         ## actor net
         self.lr_actor = 3e-4
         self.actor_net = PPOActor
         self.actor_kwargs = {
-            "discrete": self.discrete,
             "state_dim": self.state_dim,
             "action_dim": self.action_dim,
             "hidden_size": 64,
-            "dist_type": self.dist_type,
         }
 
         ## critic net
@@ -177,135 +146,118 @@ class PPOConfig(ConfigBase):
         self.critic_net = PPOCritic
         self.critic_kwargs = {"state_dim": self.state_dim, "hidden_size": 64}
 
-        # tricks
-        ## By default none of the tricks are used, and the performance of the
-        ## minimalism-style PPO is not very beautiful.
-
-        # advantage normalization
-        self.advantage_norm = False
-        # policy entropy
-        self.entropy_coef = None
-        # gradient clipping
-        self.gradient_clip = False
-        self.gradient_clip_range = 0.5
-
         self.merge_configs(configs)
+        self.actor_kwargs["continuous"] = self.continuos
+
+        # implementation details
+        self.norm_advantage = False
 
 
 class PPO(AgentBase):
     name = "PPO"
 
-    def __init__(self, configs: dict) -> None:
-        super().__init__(PPOConfig, configs)
+    def __init__(self, configs: PPOConfig, device: torch.device = torch.device("cpu")):
+        super().__init__(configs, device)
 
-        # the networks
+        # networks
         ## actor net
-        self.actor_net = self.configs.actor_net(**self.configs.actor_kwargs).to(device)
+        self.actor_net = self.configs.actor_net(**self.configs.actor_kwargs).to(self.device)
 
-        ## critic nets
-        self.critic_net = self.configs.critic_net(**self.configs.critic_kwargs).to(device)
+        ## critic net
+        self.critic_net = self.configs.critic_net(**self.configs.critic_kwargs).to(self.device)
 
-        ## optimizers
-        self.actor_optimizer = torch.optim.Adam(
-            self.actor_net.parameters(), self.configs.lr_actor, eps=1e-5
-        )
-        self.critic_optimizer = torch.optim.Adam(
-            self.critic_net.parameters(), self.configs.lr_critic, eps=1e-5
+        ## optimizer
+        self.optimizer = torch.optim.Adam(
+            [
+                {"params": self.actor_net.parameters(), "lr": self.configs.lr_actor, "eps": 1e-5},
+                {"params": self.critic_net.parameters(), "lr": self.configs.lr_critic, "eps": 1e-5},
+            ]
         )
 
         ## buffer
-        self.buffer = RandomReplayBuffer(self.configs.horizon, extra_items=["log_prob"])
+        self.buffer = RandomReplayBuffer(self.configs.horizon, extra_items=["log_prob", "value"])
 
     def get_action(self, state):
         if not isinstance(state, torch.Tensor):
-            state = torch.FloatTensor(state).to(device)
+            state = torch.FloatTensor(state).to(self.device)
 
         action, log_prob = self.actor_net.action(state)
-        return action, log_prob
+        value = self.critic_net(state).detach().cpu().numpy()[0]
+
+        return action, log_prob, value
 
     def train(self):
         if len(self.buffer) < self.configs.horizon:
             return
 
         batches = self.buffer.all()
-        state = torch.FloatTensor(batches["state"]).to(device)
-        action = torch.FloatTensor(batches["action"]).to(device)
-        reward = torch.FloatTensor(batches["reward"]).unsqueeze(-1).to(device)
-        done = torch.FloatTensor(batches["done"]).unsqueeze(-1).to(device)
-        next_state = torch.FloatTensor(batches["next_state"]).to(device)
-        old_log_prob = torch.FloatTensor(batches["log_prob"]).to(device)
-
-        if not self.configs.advantage_norm:
-            reward = (reward - reward.mean()) / (reward.std() + 1e-10)
+        state = torch.FloatTensor(batches["state"]).to(self.device)
+        action = torch.FloatTensor(batches["action"]).to(self.device)
+        reward = torch.FloatTensor(batches["reward"]).to(self.device)
+        done = torch.FloatTensor(batches["done"]).to(self.device)
+        log_prob = torch.FloatTensor(batches["log_prob"]).to(self.device)
+        value = torch.FloatTensor(batches["value"]).to(self.device)
+        next_state = torch.FloatTensor(batches["next_state"]).to(self.device)
 
         # generalized advantage estimation
-        gae = 0
-        advantage = []
         with torch.no_grad():
-            value = self.critic_net(state)
-            value_next = self.critic_net(next_state)
-            deltas = reward + self.configs.gamma * done * value_next - value
-            for delta, is_done in zip(
-                reversed(deltas.detach().cpu().numpy()),
-                reversed(done.detach().cpu().numpy()),
-            ):
-                gae = delta + (self.configs.gamma * is_done * self.configs.gae_lambda) * gae
-                advantage.append(gae)
-            advantage.reverse()
-            advantage = torch.FloatTensor(np.array(advantage)).to(device)
+            advantages = torch.zeros_like(reward).to(self.device)
+            lastgaelam = 0
 
-            v_target = advantage + value
-            if self.configs.advantage_norm:
-                advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-7)
-
-        # optimize policy
-        for _ in range(self.configs.epoch):
-            for idx in BatchSampler(
-                SubsetRandomSampler(range(self.configs.horizon - 1)),
-                self.configs.batch_size,
-                True,
-            ):
-                dist = self.actor_net.get_dist(state[idx])
-                log_prob = dist.log_prob(action[idx])
-                ratios = torch.exp(log_prob - old_log_prob[idx])
-
-                loss_cpi = ratios * advantage[idx]
-                loss_clip = (
-                    torch.clamp(
-                        ratios,
-                        1 - self.configs.clip_epsilon,
-                        1 + self.configs.clip_epsilon,
-                    )
-                    * advantage[idx]
+            for t in reversed(range(self.configs.horizon)):
+                if t == self.configs.horizon - 1:
+                    next_done = 0
+                    next_value = self.critic_net(next_state[-1])
+                else:
+                    next_done = done[t + 1]
+                    next_value = value[t + 1]
+                delta = reward[t] + self.configs.gamma * next_value * (1 - next_done) - value[t]
+                advantages[t] = lastgaelam = (
+                    delta
+                    + self.configs.gamma * self.configs.gae_lambda * (1 - next_done) * lastgaelam
                 )
 
-                if self.configs.entropy_coef is None:
-                    actor_loss = -torch.min(loss_cpi, loss_clip).mean()
-                else:
-                    dist_entropy = dist.entropy()
-                    actor_loss = (
-                        -torch.min(loss_cpi, loss_clip)
-                        - self.configs.entropy_coef * dist_entropy
-                    ).mean()
+            returns = advantages + value
 
-                # update actor net
-                self.actor_optimizer.zero_grad()
-                actor_loss.backward()
-                if self.configs.gradient_clip:
-                    nn.utils.clip_grad_norm_(
-                        self.actor_net.parameters(), self.configs.gradient_clip_range
-                    )
-                self.actor_optimizer.step()
+        # update networks with mini-batch
+        idxs = np.arange(self.configs.horizon)
+        for _ in range(self.configs.num_epochs):
+            np.random.shuffle(idxs)
 
-                # update critic net
-                critic_loss = F.mse_loss(self.critic_net(state[idx]), v_target[idx])
-                self.critic_optimizer.zero_grad()
-                critic_loss.backward()
-                if self.configs.gradient_clip:
-                    nn.utils.clip_grad_norm_(
-                        self.critic_net.parameters(), self.configs.gradient_clip_range
+            for i in range(0, self.configs.horizon, self.configs.batch_size):
+                minibatch_idx = idxs[i : i + self.configs.batch_size]
+                new_log_prob, entropy = self.actor_net.evaluate(
+                    state[minibatch_idx], action[minibatch_idx]
+                )
+                new_value = self.critic_net(state[minibatch_idx])
+
+                ratios = torch.exp(new_log_prob - log_prob[minibatch_idx])
+
+                advantage_batch = advantages[minibatch_idx].unsqueeze(-1)
+                if self.configs.norm_advantage:
+                    advantage_batch = (advantage_batch - advantage_batch.mean()) / (advantage_batch.std() + 1e-8)
+
+                loss_clip = torch.min(
+                    ratios * advantage_batch,
+                    torch.clamp(
+                        ratios, 1 - self.configs.clip_epsilon, 1 + self.configs.clip_epsilon
                     )
-                self.critic_optimizer.step()
+                    * advantage_batch,
+                ).mean()
+
+                loss_vf = F.mse_loss(new_value.squeeze(-1), returns[minibatch_idx])
+
+                loss_entropy = entropy.mean()
+
+                loss = -(
+                    loss_clip - self.configs.vf_coef * loss_vf + self.configs.entropy_coef * loss_entropy
+                )
+
+                self.optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(self.actor_net.parameters(), 0.5)
+                nn.utils.clip_grad_norm_(self.critic_net.parameters(), 0.5)
+                self.optimizer.step()
 
         self.buffer.clear()
 
@@ -313,9 +265,8 @@ class PPO(AgentBase):
         torch.save(
             {
                 "actor_net": self.actor_net.state_dict(),
-                "actor_optimizer": self.actor_optimizer.state_dict(),
                 "critic_net": self.critic_net.state_dict(),
-                "critic_optimizer": self.critic_optimizer.state_dict(),
+                "optimizer": self.optimizer.state_dict(),
             },
             path,
         )
@@ -323,9 +274,5 @@ class PPO(AgentBase):
     def load(self, path: str, map_location=None):
         checkpoint = torch.load(path, map_location=map_location)
         self.actor_net.load_state_dict(checkpoint["actor_net"])
-        self.actor_optimizer.load_state_dict(checkpoint["actor_optimizer"])
         self.critic_net.load_state_dict(checkpoint["critic_net"])
-        self.critic_optimizer.load_state_dict(checkpoint["critic_optimizer"])
-
-        self.actor_target_net = deepcopy(self.actor_net)
-        self.critic_target_net = deepcopy(self.critic_net)
+        self.optimizer.load_state_dict(checkpoint["optimizer"])

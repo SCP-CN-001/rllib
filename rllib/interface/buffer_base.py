@@ -2,8 +2,10 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
+
 class BufferBase(ABC):
     """This abstract class provide a base buffer for all RL algorithms."""
+
     def __init__(self, buffer_size: int):
         """Initialize the buffer structure here"""
         self.buffer_size = buffer_size

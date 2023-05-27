@@ -5,23 +5,27 @@ from rllib.interface.buffer_base import BufferBase
 
 
 class RandomReplayBuffer(BufferBase):
+    """The random replay buffer.
+
+    In the implementation, to save memory, we don't save the next state.
+    """
+
     def __init__(self, buffer_size: int, extra_items: list = []):
         self.buffer_size = buffer_size
-        self.cnt = 0
         self.items = ["state", "action", "reward", "done"] + extra_items
         self.buffer = {}
         for item in self.items:
             self.buffer[item] = deque([], maxlen=buffer_size)
+        self.next_state = None
 
     def __len__(self):
-        return min(self.cnt, self.buffer_size)
+        return len(self.buffer["state"])
 
-    def push(self, observations: tuple):
-        """Save a transition"""
+    def push(self, observations: tuple, next_state):
         for i, item in enumerate(self.items):
             self.buffer[item].append(observations[i])
 
-        self.cnt += 1
+        self.next_state = next_state
 
     def get(self, idx_list: np.ndarray):
         batches = {}
@@ -32,7 +36,11 @@ class RandomReplayBuffer(BufferBase):
         for idx in idx_list:
             for name in self.items:
                 batches[name].append(self.buffer[name][idx])
-            batches["next_state"].append(self.buffer["state"][idx + 1])
+
+            if idx + 1 == self.buffer_size:
+                batches["next_state"].append(self.next_state)
+            else:
+                batches["next_state"].append(self.buffer["state"][idx + 1])
 
         for name in batches.keys():
             batches[name] = np.array(batches[name], dtype=np.float32)
@@ -53,6 +61,11 @@ class RandomReplayBuffer(BufferBase):
         batches = {}
         for key, value in self.buffer.items():
             batches[key] = np.array(list(value), dtype=np.float32)
+
+        batches["next_state"] = list(self.buffer["state"])[1:]
+        batches["next_state"].append(self.next_state)
+        batches["next_state"] = np.array(batches["next_state"], dtype=np.float32)
+
         return batches
 
     def clear(self):

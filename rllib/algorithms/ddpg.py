@@ -18,11 +18,10 @@ from rllib.buffer import RandomReplayBuffer
 from rllib.exploration.ornstein_uhlenbeck_noise import OrnsteinUhlenbeckNoise
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-def linear_fanin(linear_layer: nn.Linear):
-    return linear_layer.weight.data.size()[0]
+def uniform_init(layer, init_weight: float):
+    nn.init.uniform_(layer.weight.data, -init_weight, init_weight)
+    nn.init.uniform_(layer.bias.data, -init_weight, init_weight)
+    return layer
 
 
 class DDPGActor(nn.Module):
@@ -35,26 +34,17 @@ class DDPGActor(nn.Module):
         init_weight: float,
     ):
         super().__init__()
-        self.fc1 = nn.Linear(state_dim, hidden_size1)
-        self.fc2 = nn.Linear(hidden_size1, hidden_size2)
-        self.fc3 = nn.Linear(hidden_size2, action_dim)
-        self.relu = nn.ReLU()
-        self.tanh = nn.Tanh()
-
-        # initial weight and bias
-        fc1_fanin = linear_fanin(self.fc1)
-        self.fc1.weight.data.uniform_(-1 / np.sqrt(fc1_fanin), 1 / np.sqrt(fc1_fanin))
-        self.fc1.bias.data.uniform_(-1 / np.sqrt(fc1_fanin), 1 / np.sqrt(fc1_fanin))
-        fc2_fanin = linear_fanin(self.fc2)
-        self.fc2.weight.data.uniform_(-1 / np.sqrt(fc2_fanin), 1 / np.sqrt(fc2_fanin))
-        self.fc2.bias.data.uniform_(-1 / np.sqrt(fc2_fanin), 1 / np.sqrt(fc2_fanin))
-        self.fc3.weight.data.uniform_(-init_weight, init_weight)
-        self.fc3.bias.data.uniform_(-init_weight, init_weight)
+        self.net = nn.Sequential(
+            uniform_init(nn.Linear(state_dim, hidden_size1), 1 / np.sqrt(state_dim)),
+            nn.ReLU(),
+            uniform_init(nn.Linear(hidden_size1, hidden_size2), 1 / np.sqrt(hidden_size1)),
+            nn.ReLU(),
+            uniform_init(nn.Linear(hidden_size2, action_dim), init_weight),
+            nn.Tanh(),
+        )
 
     def forward(self, state: torch.Tensor) -> torch.Tensor:
-        x = self.relu(self.fc1(state))
-        x = self.relu(self.fc2(x))
-        x = self.tanh(self.fc3(x))
+        x = self.net(state)
         return x
 
     def action(self, state: torch.Tensor) -> np.ndarray:
@@ -73,26 +63,19 @@ class DDPGCritic(nn.Module):
         init_weight: float,
     ):
         super().__init__()
-        self.fc1 = nn.Linear(state_dim + action_dim, hidden_size1)
-        self.fc2 = nn.Linear(hidden_size1, hidden_size2)
-        self.fc3 = nn.Linear(hidden_size2, 1)
-        self.relu = nn.ReLU()
-
-        # initial weight and bias
-        fc1_fanin = linear_fanin(self.fc1)
-        self.fc1.weight.data.uniform_(-1 / np.sqrt(fc1_fanin), 1 / np.sqrt(fc1_fanin))
-        self.fc1.bias.data.uniform_(-1 / np.sqrt(fc1_fanin), 1 / np.sqrt(fc1_fanin))
-        fc2_fanin = linear_fanin(self.fc2)
-        self.fc2.weight.data.uniform_(-1 / np.sqrt(fc2_fanin), 1 / np.sqrt(fc2_fanin))
-        self.fc2.bias.data.uniform_(-1 / np.sqrt(fc2_fanin), 1 / np.sqrt(fc2_fanin))
-        self.fc3.weight.data.uniform_(-init_weight, init_weight)
-        self.fc3.bias.data.uniform_(-init_weight, init_weight)
+        self.net = nn.Sequential(
+            uniform_init(
+                nn.Linear(state_dim + action_dim, hidden_size1), 1 / np.sqrt(state_dim + action_dim)
+            ),
+            nn.ReLU(),
+            uniform_init(nn.Linear(hidden_size1, hidden_size2), 1 / np.sqrt(hidden_size1)),
+            nn.ReLU(),
+            uniform_init(nn.Linear(hidden_size2, 1), init_weight),
+        )
 
     def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         x = torch.cat([state, action], 1)
-        x = self.relu(self.fc1(x))
-        x = self.relu(self.fc2(x))
-        x = self.fc3(x)
+        x = self.net(x)
 
         return x
 
@@ -155,22 +138,20 @@ class DDPGConfig(ConfigBase):
 class DDPG(AgentBase):
     name = "DDPG"
 
-    def __init__(self, configs: DDPGConfig):
-        super().__init__(configs)
+    def __init__(self, configs: DDPGConfig, device: torch.device = torch.device("cpu")):
+        super().__init__(configs, device)
 
         # networks
         ## actor net
-        self.actor_net = self.configs.actor_net(**self.configs.actor_kwargs).to(device)
+        self.actor_net = self.configs.actor_net(**self.configs.actor_kwargs).to(self.device)
         self.actor_target_net = deepcopy(self.actor_net)
 
         ## critic net
-        self.critic_net = self.configs.critic_net(**self.configs.critic_kwargs).to(device)
+        self.critic_net = self.configs.critic_net(**self.configs.critic_kwargs).to(self.device)
         self.critic_target_net = deepcopy(self.critic_net)
 
         ## optimizers
-        self.actor_optimizer = torch.optim.Adam(
-            self.actor_net.parameters(), self.configs.lr_actor
-        )
+        self.actor_optimizer = torch.optim.Adam(self.actor_net.parameters(), self.configs.lr_actor)
         self.critic_optimizer = torch.optim.Adam(
             self.critic_net.parameters(), self.configs.lr_critic
         )
@@ -189,7 +170,7 @@ class DDPG(AgentBase):
 
     def get_action(self, state):
         if not isinstance(state, torch.Tensor):
-            state = torch.FloatTensor(state).to(device)
+            state = torch.FloatTensor(state).to(self.device)
         action = self.actor_net.action(state)
         action += self.noise_generator()
 
@@ -206,16 +187,16 @@ class DDPG(AgentBase):
             return
 
         batches = self.buffer.sample(self.configs.batch_size)
-        state = torch.FloatTensor(batches["state"]).to(device)
-        action = torch.FloatTensor(batches["action"]).to(device)
-        reward = torch.FloatTensor(batches["reward"]).unsqueeze(-1).to(device)
-        next_state = torch.FloatTensor(batches["next_state"]).to(device)
-        done = torch.FloatTensor(batches["done"]).unsqueeze(-1).to(device)
+        state = torch.FloatTensor(batches["state"]).to(self.device)
+        action = torch.FloatTensor(batches["action"]).to(self.device)
+        reward = torch.FloatTensor(batches["reward"]).unsqueeze(-1).to(self.device)
+        next_state = torch.FloatTensor(batches["next_state"]).to(self.device)
+        done = torch.FloatTensor(batches["done"]).unsqueeze(-1).to(self.device)
 
         # update the critic network
         next_action = self.actor_target_net(state)
         q_next = self.critic_target_net(next_state, next_action)
-        q_target = reward + done * self.configs.gamma * q_next
+        q_target = reward + (1 - done) * self.configs.gamma * q_next
         q_value = self.critic_net(state, action)
         critic_loss = F.mse_loss(q_value, q_target)
         self.critic_optimizer.zero_grad()

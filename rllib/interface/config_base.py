@@ -1,5 +1,6 @@
 class ConfigBase:
     """This class provide a base config for all RL algorithms."""
+
     def __init__(self):
         # runtime
         self.n_epoch = None

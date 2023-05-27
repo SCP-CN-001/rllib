@@ -17,9 +17,6 @@ from rllib.interface import ConfigBase
 from rllib.buffer import RandomReplayBuffer
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
 class TD3Actor(nn.Module):
     def __init__(self, state_dim: int, action_dim: int, hidden_size: int):
         super().__init__()
@@ -113,30 +110,24 @@ class TD3Config(ConfigBase):
 class TD3(AgentBase):
     name = "TD3"
 
-    def __init__(self, configs: dict):
-        super().__init__(configs)
+    def __init__(self, configs: dict, device: torch.device = torch.device("cpu")):
+        super().__init__(configs, device)
 
         # networks
         ## actor net
-        self.actor_net = self.configs.actor_net(**self.configs.actor_kwargs).to(device)
+        self.actor_net = self.configs.actor_net(**self.configs.actor_kwargs).to(self.device)
         self.actor_target_net = deepcopy(self.actor_net)
         self.update_cnt = 0
 
         ## critic net
-        self.critic_net1 = self.configs.critic_net(**self.configs.critic_kwargs).to(
-            device
-        )
+        self.critic_net1 = self.configs.critic_net(**self.configs.critic_kwargs).to(self.device)
         self.critic_target_net1 = deepcopy(self.critic_net1)
 
-        self.critic_net2 = self.configs.critic_net(**self.configs.critic_kwargs).to(
-            device
-        )
+        self.critic_net2 = self.configs.critic_net(**self.configs.critic_kwargs).to(self.device)
         self.critic_target_net2 = deepcopy(self.critic_net2)
 
         ## optimizers
-        self.actor_optimizer = torch.optim.Adam(
-            self.actor_net.parameters(), self.configs.lr_actor
-        )
+        self.actor_optimizer = torch.optim.Adam(self.actor_net.parameters(), self.configs.lr_actor)
         self.critic_optimizer1 = torch.optim.Adam(
             self.critic_net1.parameters(), self.configs.lr_critic
         )
@@ -153,7 +144,7 @@ class TD3(AgentBase):
 
     def get_action(self, state):
         if not isinstance(state, torch.Tensor):
-            state = torch.FloatTensor(state).to(device)
+            state = torch.FloatTensor(state).to(self.device)
         action = self.actor_net.action(state)
 
         # explore
@@ -176,11 +167,11 @@ class TD3(AgentBase):
             return
 
         batches = self.buffer.sample(self.configs.batch_size)
-        state = torch.FloatTensor(batches["state"]).to(device)
-        action = torch.FloatTensor(batches["action"]).to(device)
-        reward = torch.FloatTensor(batches["reward"]).unsqueeze(-1).to(device)
-        next_state = torch.FloatTensor(batches["next_state"]).to(device)
-        done = torch.FloatTensor(batches["done"]).unsqueeze(-1).to(device)
+        state = torch.FloatTensor(batches["state"]).to(self.device)
+        action = torch.FloatTensor(batches["action"]).to(self.device)
+        reward = torch.FloatTensor(batches["reward"]).unsqueeze(-1).to(self.device)
+        next_state = torch.FloatTensor(batches["next_state"]).to(self.device)
+        done = torch.FloatTensor(batches["done"]).unsqueeze(-1).to(self.device)
 
         # target policy smoothing
         noise = torch.randn_like(action) * self.configs.tps_noise_sigma
@@ -191,7 +182,7 @@ class TD3(AgentBase):
         # critic loss
         q1_target = self.critic_target_net1(next_state, next_action)
         q2_target = self.critic_target_net2(next_state, next_action)
-        q_target = reward + done * self.configs.gamma * torch.min(q1_target, q2_target)
+        q_target = reward + (1 - done) * self.configs.gamma * torch.min(q1_target, q2_target)
 
         current_q1 = self.critic_net1(state, action)
         current_q2 = self.critic_net2(state, action)
