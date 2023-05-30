@@ -1,4 +1,3 @@
-from collections import deque
 import numpy as np
 
 from rllib.interface.buffer_base import BufferBase
@@ -6,49 +5,49 @@ from rllib.interface.buffer_base import BufferBase
 
 class RandomReplayBuffer(BufferBase):
     """The random replay buffer.
-
-    In the implementation, to save memory, we don't save the next state.
     """
 
     def __init__(self, buffer_size: int, extra_items: list = []):
-        self.buffer_size = buffer_size
-        self.items = ["state", "action", "reward", "done"] + extra_items
-        self.buffer = {}
+        super().__init__(buffer_size)
+
+        # The items to store are not initialized here, but in the push method.
+        self.items = ["state", "action", "next_state", "reward", "done"] + extra_items
         for item in self.items:
-            self.buffer[item] = deque([], maxlen=buffer_size)
-        self.next_state = None
+            setattr(self, item, None)
+
+        self.cnt = 0
+        self.init = False
 
     def __len__(self):
-        return len(self.buffer["state"])
+        return min(self.cnt, self.buffer_size)
 
-    def push(self, observations: tuple, next_state):
+    def push(self, observations: tuple):
+        # initialize the buffer
+        if not self.init and self.cnt == 0:
+            for i, item in enumerate(self.items):
+                if hasattr(observations[i], "shape"):
+                    setattr(self, item, np.empty((self.buffer_size, *observations[i].shape), dtype=np.float32))
+                else:
+                    setattr(self, item, np.empty((self.buffer_size, 1), dtype=np.float32))
+
+            self.init = True
+
+        # push the transition
         for i, item in enumerate(self.items):
-            self.buffer[item].append(observations[i])
+            idx = self.cnt % self.buffer_size
+            getattr(self, item)[idx] = observations[i]
 
-        self.next_state = next_state
+        self.cnt += 1
 
     def get(self, idx_list: np.ndarray):
         batches = {}
-        for name in self.items:
-            batches[name] = []
-        batches["next_state"] = []
-
-        for idx in idx_list:
-            for name in self.items:
-                batches[name].append(self.buffer[name][idx])
-
-            if idx + 1 == self.buffer_size:
-                batches["next_state"].append(self.next_state)
-            else:
-                batches["next_state"].append(self.buffer["state"][idx + 1])
-
-        for name in batches.keys():
-            batches[name] = np.array(batches[name], dtype=np.float32)
+        for item in self.items:
+            batches[item] = getattr(self, item)[idx_list]
 
         return batches
 
     def sample(self, batch_size: int):
-        idx_list = np.random.randint(self.__len__() - 1, size=batch_size)
+        idx_list = np.random.randint(self.__len__(), size=batch_size)
         return self.get(idx_list)
 
     def shuffle(self, idx_range: int = None):
@@ -58,16 +57,11 @@ class RandomReplayBuffer(BufferBase):
         return self.get(idx_list)
 
     def all(self):
-        batches = {}
-        for key, value in self.buffer.items():
-            batches[key] = np.array(list(value), dtype=np.float32)
-
-        batches["next_state"] = list(self.buffer["state"])[1:]
-        batches["next_state"].append(self.next_state)
-        batches["next_state"] = np.array(batches["next_state"], dtype=np.float32)
-
-        return batches
+        idx_list = np.arange(self.__len__())
+        return self.get(idx_list)
 
     def clear(self):
         for item in self.items:
-            self.buffer[item].clear()
+            setattr(self, item, np.empty_like(getattr(self, item)))
+
+        self.cnt = 0

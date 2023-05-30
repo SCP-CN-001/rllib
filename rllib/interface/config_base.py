@@ -41,13 +41,13 @@ class ConfigBase:
                 setattr(self, key, configs[key])
             else:
                 raise AttributeError("[%s] is not defined!" % key)
-        
+
         if "state_dim" not in configs.keys():
             if isinstance(self.state_space, gym.spaces.Box):
                 self.state_dim = self.state_space.shape[0]
             elif isinstance(self.state_space, gym.spaces.Discrete):
                 self.state_dim = self.state_space.n
-        
+
         if "action_dim" not in configs.keys():
             if isinstance(self.action_space, gym.spaces.Box):
                 self.action_dim = self.action_space.shape[0]

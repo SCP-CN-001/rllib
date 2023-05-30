@@ -13,8 +13,8 @@ from torch.distributions import Categorical, Normal
 
 from rllib.interface import AgentBase
 from rllib.interface import ConfigBase
+# from rllib.buffer import RandomReplayBuffer
 from rllib.buffer import RandomReplayBuffer
-
 
 def orthogonal_init(layer, gain: float = np.sqrt(2), constant: float = 0.0):
     nn.init.orthogonal_(layer.weight.data, gain)
@@ -34,7 +34,6 @@ class PPOActor(nn.Module):
             orthogonal_init(nn.Linear(hidden_size, hidden_size)),
             nn.Tanh(),
             orthogonal_init(nn.Linear(hidden_size, action_dim), 0.01),
-            nn.Tanh() if self.continuous else nn.Softmax(dim=-1),
         )
 
         if self.continuous:
@@ -181,11 +180,11 @@ class PPO(AgentBase):
         batches = self.buffer.all()
         state = torch.FloatTensor(batches["state"]).to(self.device)
         action = torch.FloatTensor(batches["action"]).to(self.device)
+        next_state = torch.FloatTensor(batches["next_state"]).to(self.device)
         reward = torch.FloatTensor(batches["reward"]).to(self.device)
         done = torch.FloatTensor(batches["done"]).to(self.device)
         log_prob = torch.FloatTensor(batches["log_prob"]).to(self.device)
         value = torch.FloatTensor(batches["value"]).to(self.device)
-        next_state = torch.FloatTensor(batches["next_state"]).to(self.device)
 
         # generalized advantage estimation
         with torch.no_grad():
@@ -221,9 +220,11 @@ class PPO(AgentBase):
 
                 ratios = torch.exp(new_log_prob - log_prob[minibatch_idx])
 
-                advantage_batch = advantages[minibatch_idx].unsqueeze(-1)
+                advantage_batch = advantages[minibatch_idx]
                 if self.configs.norm_advantage:
-                    advantage_batch = (advantage_batch - advantage_batch.mean()) / (advantage_batch.std() + 1e-8)
+                    advantage_batch = (advantage_batch - advantage_batch.mean()) / (
+                        advantage_batch.std() + 1e-8
+                    )
 
                 loss_clip = torch.min(
                     ratios * advantage_batch,
@@ -233,12 +234,14 @@ class PPO(AgentBase):
                     * advantage_batch,
                 ).mean()
 
-                loss_vf = F.mse_loss(new_value.squeeze(-1), returns[minibatch_idx])
+                loss_vf = F.mse_loss(new_value, returns[minibatch_idx]).mean()
 
                 loss_entropy = entropy.mean()
 
                 loss = -(
-                    loss_clip - self.configs.vf_coef * loss_vf + self.configs.entropy_coef * loss_entropy
+                    loss_clip
+                    - self.configs.vf_coef * loss_vf
+                    + self.configs.entropy_coef * loss_entropy
                 )
 
                 self.optimizer.zero_grad()

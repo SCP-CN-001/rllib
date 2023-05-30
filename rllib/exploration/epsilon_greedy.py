@@ -23,6 +23,8 @@ class EpsilonGreedy(object):
         epsilon = self.initial_epsilon + self.step_cnt / self.step_decay * (
             self.final_epsilon - self.initial_epsilon
         )
+
+        self.step_cnt += 1
         return epsilon
 
     def explore(self, action, action_space):
@@ -33,6 +35,7 @@ class EpsilonGreedy(object):
                 threshold = self.final_epsilon
         else:
             threshold = self.epsilon
+
         if random.random() < threshold:
             return action_space.sample()
         return action

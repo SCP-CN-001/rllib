@@ -42,7 +42,7 @@ class QNetwork(nn.Module):
 
     def action(self, state: torch.Tensor) -> int:
         x = self.forward(state)
-        action = x.argmax(1)[0]
+        action = x.argmax()
         action = action.detach().cpu().numpy()
         return action
 
@@ -74,10 +74,6 @@ class DQNConfig(ConfigBase):
         self.q_net = QNetwork
         self.q_net_kwargs = {"num_channels": 4, "action_dim": self.action_dim}
         self.target_update_freq = 1e4
-
-        # tricks
-        self.gradient_clip = False
-        self.gradient_clip_range = 1
 
         self.merge_configs(configs)
 
@@ -127,17 +123,14 @@ class DQN(AgentBase):
         done = torch.FloatTensor(batches["done"]).to(self.device)
 
         # loss function
-        q_value = self.policy_net(state)[range(self.configs.batch_size), action.long()]
-        q_next = self.target_net(next_state).max(-1)[0]
-        q_target = reward + self.configs.gamma * (1 - done) * q_next
+        q_value = self.policy_net(state).gather(1, action.long().unsqueeze(-1)).squeeze(-1)
+        next_q_value = self.target_net(next_state).max(-1)[0]
+        q_target = reward + self.configs.gamma * (1 - done) * next_q_value
         loss = F.smooth_l1_loss(q_value, q_target)
 
-        # optimization
+        # update policy net
         self.optimizer.zero_grad()
         loss.backward()
-        if self.configs.gradient_clip:
-            for param in self.policy_net.parameters():
-                param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
         # update target net

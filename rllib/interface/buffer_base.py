@@ -11,13 +11,13 @@ class BufferBase(ABC):
         self.buffer_size = buffer_size
 
     @abstractmethod
-    def push(self, memory: tuple):
-        """Add a new memory item to the buffer"""
+    def push(self, transition: tuple):
+        """Add a new memory transition to the buffer"""
 
     @abstractmethod
     def get(self, idx: np.ndarray):
-        """Get an arbitrary batch of memory item from the buffer"""
+        """Get a batch of memory transitions by the index list from the buffer"""
 
     @abstractmethod
     def sample(self, batch_size: int):
-        """Sample a batch of memory items from the buffer"""
+        """Sample a batch of memory transitions from the buffer"""

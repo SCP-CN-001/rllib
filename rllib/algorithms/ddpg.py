@@ -177,9 +177,9 @@ class DDPG(AgentBase):
         batches = self.buffer.sample(self.configs.batch_size)
         state = torch.FloatTensor(batches["state"]).to(self.device)
         action = torch.FloatTensor(batches["action"]).to(self.device)
-        reward = torch.FloatTensor(batches["reward"]).unsqueeze(-1).to(self.device)
         next_state = torch.FloatTensor(batches["next_state"]).to(self.device)
-        done = torch.FloatTensor(batches["done"]).unsqueeze(-1).to(self.device)
+        reward = torch.FloatTensor(batches["reward"]).to(self.device)
+        done = torch.FloatTensor(batches["done"]).to(self.device)
 
         # update the critic network
         next_action = self.actor_target_net(state)
