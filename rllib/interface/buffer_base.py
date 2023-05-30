@@ -15,9 +15,9 @@ class BufferBase(ABC):
         """Add a new memory transition to the buffer"""
 
     @abstractmethod
-    def get(self, idx: np.ndarray):
-        """Get a batch of memory transitions by the index list from the buffer"""
-
-    @abstractmethod
     def sample(self, batch_size: int):
         """Sample a batch of memory transitions from the buffer"""
+
+    @abstractmethod
+    def clear(self):
+        """Clear the buffer"""
