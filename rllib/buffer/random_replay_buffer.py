@@ -42,7 +42,7 @@ class RandomReplayBuffer(BufferBase):
 
         self.cnt += 1
 
-    def get(self, idx_list: np.ndarray):
+    def _get(self, idx_list: np.ndarray):
         batches = {}
         for item in self.items:
             batches[item] = getattr(self, item)[idx_list]
@@ -51,17 +51,17 @@ class RandomReplayBuffer(BufferBase):
 
     def sample(self, batch_size: int):
         idx_list = np.random.randint(self.__len__(), size=batch_size)
-        return self.get(idx_list)
+        return self._get(idx_list)
 
     def shuffle(self, idx_range: int = None):
         idx_range = self.__len__() if idx_range is None else idx_range
         idx_list = np.arange(idx_range)
         np.random.shuffle(idx_list)
-        return self.get(idx_list)
+        return self._get(idx_list)
 
     def all(self):
         idx_list = np.arange(self.__len__())
-        return self.get(idx_list)
+        return self._get(idx_list)
 
     def clear(self):
         for item in self.items:
