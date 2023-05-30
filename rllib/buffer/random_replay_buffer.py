@@ -4,8 +4,7 @@ from rllib.interface.buffer_base import BufferBase
 
 
 class RandomReplayBuffer(BufferBase):
-    """The random replay buffer.
-    """
+    """The random replay buffer."""
 
     def __init__(self, buffer_size: int, extra_items: list = []):
         super().__init__(buffer_size)
@@ -21,12 +20,16 @@ class RandomReplayBuffer(BufferBase):
     def __len__(self):
         return min(self.cnt, self.buffer_size)
 
-    def push(self, observations: tuple):
+    def push(self, transition: tuple):
         # initialize the buffer
         if not self.init and self.cnt == 0:
             for i, item in enumerate(self.items):
-                if hasattr(observations[i], "shape"):
-                    setattr(self, item, np.empty((self.buffer_size, *observations[i].shape), dtype=np.float32))
+                if hasattr(transition[i], "shape"):
+                    setattr(
+                        self,
+                        item,
+                        np.empty((self.buffer_size, *transition[i].shape), dtype=np.float32),
+                    )
                 else:
                     setattr(self, item, np.empty((self.buffer_size, 1), dtype=np.float32))
 
@@ -35,7 +38,7 @@ class RandomReplayBuffer(BufferBase):
         # push the transition
         for i, item in enumerate(self.items):
             idx = self.cnt % self.buffer_size
-            getattr(self, item)[idx] = observations[i]
+            getattr(self, item)[idx] = transition[i]
 
         self.cnt += 1
 

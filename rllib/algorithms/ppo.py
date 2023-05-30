@@ -13,8 +13,10 @@ from torch.distributions import Categorical, Normal
 
 from rllib.interface import AgentBase
 from rllib.interface import ConfigBase
+
 # from rllib.buffer import RandomReplayBuffer
 from rllib.buffer import RandomReplayBuffer
+
 
 def orthogonal_init(layer, gain: float = np.sqrt(2), constant: float = 0.0):
     nn.init.orthogonal_(layer.weight.data, gain)
