@@ -8,10 +8,15 @@ class AgentBase(ABC):
         """Initialize the model structure here"""
         self.configs = configs
         self.device = device
+        self.buffer = None
 
     @abstractmethod
     def get_action(self, state):
         """Return an action based on the input state"""
+
+    def push(self, transition: tuple):
+        """Add a new memory transition to the buffer"""
+        self.buffer.push(transition)
 
     @abstractmethod
     def train(self):

@@ -1,7 +1,5 @@
 from abc import ABC, abstractmethod
 
-import numpy as np
-
 
 class BufferBase(ABC):
     """This abstract class provide a base buffer for all RL algorithms."""
