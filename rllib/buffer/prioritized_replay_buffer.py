@@ -57,12 +57,12 @@ class PrioritizedReplayBuffer(BufferBase):
     def push(self, transition: tuple, priority: float):
         # initialize the buffer
         if not self.init and self.cnt == 0:
-            for item in self.items:
-                if hasattr(transition[0][item], "shape"):
+            for i, item in enumerate(self.items):
+                if hasattr(transition[i], "shape"):
                     setattr(
                         self,
                         item,
-                        np.empty((self.buffer_size, *transition[0][item].shape), dtype=np.float32),
+                        np.empty((self.buffer_size, *transition[i].shape), dtype=np.float32),
                     )
                 else:
                     setattr(self, item, np.empty((self.buffer_size, 1), dtype=np.float32))
@@ -70,13 +70,13 @@ class PrioritizedReplayBuffer(BufferBase):
             self.init = True
 
         # push the transition
-        tree_idx = self.data_pointer + self.capacity - 1
+        tree_idx = self.data_pointer + self.buffer_size - 1
         self._update_priority(tree_idx, priority)
         for i, item in enumerate(self.items):
             getattr(self, item)[self.data_pointer] = transition[i]
 
         self.data_pointer += 1
-        if self.data_pointer >= self.capacity:
+        if self.data_pointer >= self.buffer_size:
             self.data_pointer = 0
 
         self.cnt += 1
@@ -96,7 +96,7 @@ class PrioritizedReplayBuffer(BufferBase):
                     value -= self.tree[left_idx]
                     parent_idx = right_idx
 
-        idx = leaf_idx - self.capacity + 1
+        idx = leaf_idx - self.buffer_size + 1
         return idx
 
     def sample(self, batch_size: int):
@@ -115,9 +115,7 @@ class PrioritizedReplayBuffer(BufferBase):
         for item in self.items:
             batch[item] = getattr(self, item)[batch_idx]
 
-        weights = np.power(self.tree[batch_idx] / self.total_priority, -self.beta)
-
-        return batch, weights
+        return batch
 
     def clear(self):
         self.tree = np.zeros(2 * self.buffer_size - 1)
