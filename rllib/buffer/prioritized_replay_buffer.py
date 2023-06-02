@@ -7,7 +7,7 @@ class SumTree:
     def __init__(self, capacity: int):
         self.capacity = capacity
         self.tree = np.zeros(2 * self.capacity - 1)
-        self.data_pointer = 0
+        self.data_idx = 0
 
     @property
     def sum(self):
@@ -18,6 +18,7 @@ class SumTree:
         return np.max(self.tree[self.capacity - 1 :])
 
     def update(self, idx: int, priority: float):
+        """Update the priority of the leaf node."""
         change = priority - self.tree[idx]
         self.tree[idx] = priority
         while idx != 0:
@@ -25,6 +26,7 @@ class SumTree:
             self.tree[idx] += change
 
     def get_idx(self, value: float):
+        """Find the leaf index that corresponds to the value."""
         parent_idx = 0
         while True:
             left_idx = 2 * parent_idx + 1
@@ -39,8 +41,7 @@ class SumTree:
                     value -= self.tree[left_idx]
                     parent_idx = right_idx
 
-        idx = leaf_idx - self.capacity + 1
-        return idx
+        return leaf_idx
 
 
 class PrioritizedReplayBuffer(BufferBase):
@@ -51,7 +52,7 @@ class PrioritizedReplayBuffer(BufferBase):
         beta: The beta used to calculate the importance sampling weight. The value of beta will slowly increase to 1.
         beta_increment: The increment of beta.
         tree: The sum tree used to store the priorities.
-        data_pointer: The pointer to the current position in the buffer.
+        data_idx: The pointer to the current position in the buffer.
         items: The items to store in the buffer.
         cnt: record the true length of the buffer.
     """
@@ -74,7 +75,7 @@ class PrioritizedReplayBuffer(BufferBase):
         self.priority = SumTree(self.buffer_size)
         self.priority_exponent = SumTree(self.buffer_size)
 
-        self.data_pointer = 0
+        self.data_idx = 0
         # The items to store are not initialized here, but in the push method.
         self.items = ["state", "action", "next_state", "reward", "done"] + extra_items
         for item in self.items:
@@ -102,17 +103,17 @@ class PrioritizedReplayBuffer(BufferBase):
             self.init = True
 
         # push the transition
-        max_priority = np.max(self.priority.max_leaf, self.initial_priority)
-        tree_idx = self.data_pointer + self.buffer_size - 1
+        max_priority = np.max([self.priority.max_leaf, self.initial_priority])
+        tree_idx = self.data_idx + self.buffer_size - 1
         self.priority.update(tree_idx, max_priority)
         self.priority_exponent.update(tree_idx, max_priority**self.alpha)
 
         for i, item in enumerate(self.items):
-            getattr(self, item)[self.data_pointer] = transition[i]
+            getattr(self, item)[self.data_idx] = transition[i]
 
-        self.data_pointer += 1
-        if self.data_pointer >= self.buffer_size:
-            self.data_pointer = 0
+        self.data_idx += 1
+        if self.data_idx >= self.buffer_size:
+            self.data_idx = 0
 
         self.cnt += 1
 
@@ -122,26 +123,23 @@ class PrioritizedReplayBuffer(BufferBase):
 
         # sample the batch
         priority_segment = self.priority_exponent.sum / batch_size
-        batch_idx = np.empty((batch_size,), dtype=np.int32)
+        leaf_idx = np.empty((batch_size), dtype=np.int32)
         batch = {}
         for i in range(batch_size):
             a = priority_segment * i
             b = priority_segment * (i + 1)
             value = np.random.uniform(a, b)
-            idx = self.priority_exponent.get_idx(value)
-            batch_idx[i] = idx
+            leaf_idx[i] = self.priority_exponent.get_idx(value)
 
         for item in self.items:
-            batch[item] = getattr(self, item)[batch_idx]
+            batch[item] = getattr(self, item)[leaf_idx - self.buffer_size + 1]
 
         # calculate the importance sampling weight
-        probability = (
-            self.priority_exponent[self.batch_idx + self.buffer_size - 1] / self.priority.sum
-        )
+        probability = self.priority_exponent.tree[leaf_idx] / self.priority_exponent.sum
         weight = np.power(self.buffer_size * probability, -self.beta)
         batch["weight"] = weight / np.max(weight)
 
-        return batch, batch_idx
+        return batch, leaf_idx
 
     def update_priority(self, batch_idx: np.ndarray, priority: np.ndarray):
         priority = priority + 1e-6
@@ -152,7 +150,7 @@ class PrioritizedReplayBuffer(BufferBase):
 
     def clear(self):
         self.tree = np.zeros(2 * self.buffer_size - 1)
-        self.data_pointer = 0
+        self.data_idx = 0
 
         for item in self.items:
             setattr(self, item, np.empty_like(getattr(self, item)))
