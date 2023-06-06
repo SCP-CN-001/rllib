@@ -25,13 +25,16 @@ class RandomReplayBuffer(BufferBase):
         if not self.init and self.cnt == 0:
             for i, item in enumerate(self.items):
                 if hasattr(transition[i], "shape"):
-                    setattr(
-                        self,
-                        item,
-                        np.empty((self.buffer_size, *transition[i].shape), dtype=np.float32),
-                    )
+                    if len(transition[i].shape) == 0:
+                        setattr(self, item, np.empty(self.buffer_size, dtype=np.float32))
+                    else:
+                        setattr(
+                            self,
+                            item,
+                            np.empty((self.buffer_size, *transition[i].shape), dtype=np.float32),
+                        )
                 else:
-                    setattr(self, item, np.empty((self.buffer_size, 1), dtype=np.float32))
+                    setattr(self, item, np.empty(self.buffer_size, dtype=np.float32))
 
             self.init = True
 

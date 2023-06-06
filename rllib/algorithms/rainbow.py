@@ -17,7 +17,6 @@ import torch.nn.functional as F
 from rllib.interface import AgentBase
 from rllib.interface import ConfigBase
 from rllib.buffer import PrioritizedReplayBuffer
-from rllib.exploration import EpsilonGreedy
 
 
 class NoisyLinear(nn.Module):
@@ -132,12 +131,8 @@ class RainbowConfig(ConfigBase):
         self.batch_size = 32
         self.gamma = 0.99
         self.n_initial_exploration_steps = int(8e4)
-        self.buffer_kwargs = {
-            "buffer_size": int(1e6),
-            "alpha": 0.5,
-            "beta": 0.4,
-            "beta_increment": 1e-6,
-        }
+        self.buffer_size = int(1e6)
+        self.buffer_kwargs = {"alpha": 0.5, "beta": 0.4, "beta_increment": 1e-6}
         self.multi_step = 3
         self.v_min = -10
         self.v_max = 10
@@ -181,7 +176,9 @@ class Rainbow(AgentBase):
 
         # buffer
         ## Extension: Prioritized Experience Replay
-        self.buffer = PrioritizedReplayBuffer(**self.configs.buffer_kwargs)
+        self.buffer = PrioritizedReplayBuffer(
+            self.configs.buffer_size, **self.configs.buffer_kwargs
+        )
         ## Extension: Multi-step Learning
         self.n_step_buffer = deque(maxlen=self.configs.multi_step)
 
