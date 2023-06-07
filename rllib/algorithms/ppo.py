@@ -36,6 +36,7 @@ class PPOActor(nn.Module):
             orthogonal_init(nn.Linear(hidden_size, hidden_size)),
             nn.Tanh(),
             orthogonal_init(nn.Linear(hidden_size, action_dim), 0.01),
+            nn.Tanh() if continuous else nn.Softmax(dim=-1),
         )
 
         if self.continuous:
@@ -100,7 +101,7 @@ class PPOConfig(ConfigBase):
         # model
         ## hyper-parameters
         ## Here use the PPO hyper-parameters from Mujoco as default values
-        self.continuos = True
+        self.continuous = True
         self.num_epochs = 10
         self.horizon = 2048
         self.batch_size = 64
@@ -109,17 +110,6 @@ class PPOConfig(ConfigBase):
         self.clip_epsilon = 0.2
         self.vf_coef = 0.5
         self.entropy_coef = 0.0
-
-        ## Here are the hyper-parameters for Atari games
-        # self.continuos = False
-        # self.num_epochs = 3
-        # self.horizon = 128
-        # self.batch_size = 32
-        # self.gamma = 0.99
-        # self.gae_lambda = 0.95
-        # self.clip_epsilon = 0.2
-        # self.vf_coef = 1
-        # self.entropy_coef = 0.01
 
         ## actor net
         self.lr_actor = 3e-4
@@ -136,10 +126,10 @@ class PPOConfig(ConfigBase):
         self.critic_kwargs = {"state_dim": self.state_dim, "hidden_size": 64}
 
         self.merge_configs(configs)
-        self.actor_kwargs["continuous"] = self.continuos
+        self.actor_kwargs["continuous"] = self.continuous
 
         # implementation details
-        self.norm_advantage = False
+        self.norm_advantage = True
 
 
 class PPO(AgentBase):
@@ -206,6 +196,8 @@ class PPO(AgentBase):
                     + self.configs.gamma * self.configs.gae_lambda * (1 - next_done) * lastgaelam
                 )
 
+            advantages = advantages.unsqueeze(-1)
+            value = value.unsqueeze(-1)
             returns = advantages + value
 
         # update networks with mini-batch

@@ -200,6 +200,9 @@ class SAC(AgentBase):
         reward = torch.FloatTensor(batches["reward"]).to(self.device)
         done = torch.FloatTensor(batches["done"]).to(self.device)
 
+        reward = reward.unsqueeze(-1)
+        done = done.unsqueeze(-1)
+
         # soft Q loss
         next_action, next_log_prob = self.actor_net.evaluate(next_state, self.device)
         next_log_prob = next_log_prob.sum(-1, keepdim=True)

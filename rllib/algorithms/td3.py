@@ -163,6 +163,9 @@ class TD3(AgentBase):
         reward = torch.FloatTensor(batches["reward"]).to(self.device)
         done = torch.FloatTensor(batches["done"]).to(self.device)
 
+        reward = reward.unsqueeze(-1)
+        done = done.unsqueeze(-1)
+
         # target policy smoothing
         noise = torch.randn_like(action) * self.configs.tps_noise_sigma
         noise = noise.clamp(-self.configs.tps_noise_clip, self.configs.tps_noise_clip)
