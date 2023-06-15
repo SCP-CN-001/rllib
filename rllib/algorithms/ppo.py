@@ -14,7 +14,6 @@ from torch.distributions import Categorical, Normal
 from rllib.interface import AgentBase
 from rllib.interface import ConfigBase
 
-# from rllib.buffer import RandomReplayBuffer
 from rllib.buffer import RandomReplayBuffer
 
 
@@ -102,6 +101,7 @@ class PPOConfig(ConfigBase):
         ## hyper-parameters
         ## Here use the PPO hyper-parameters from Mujoco as default values
         self.continuous = True
+        self.num_env = 1
         self.num_epochs = 10
         self.horizon = 2048
         self.batch_size = 64
@@ -118,6 +118,7 @@ class PPOConfig(ConfigBase):
             "state_dim": self.state_dim,
             "action_dim": self.action_dim,
             "hidden_size": 64,
+            "continuous": self.continuous if "continuous" not in configs else configs["continuous"],
         }
 
         ## critic net
@@ -126,10 +127,10 @@ class PPOConfig(ConfigBase):
         self.critic_kwargs = {"state_dim": self.state_dim, "hidden_size": 64}
 
         self.merge_configs(configs)
-        self.actor_kwargs["continuous"] = self.continuous
 
         # implementation details
         self.norm_advantage = True
+        self.clip_grad_norm = True
 
 
 class PPO(AgentBase):
@@ -154,51 +155,82 @@ class PPO(AgentBase):
         )
 
         ## buffer
-        self.buffer = RandomReplayBuffer(self.configs.horizon, extra_items=["log_prob", "value"])
+        self.buffer_cnt = 0
+        self.buffer = [
+            RandomReplayBuffer(self.configs.horizon, extra_items=["log_prob", "value"])
+            for _ in range(self.configs.num_env)
+        ]
 
     def get_action(self, state):
         if not isinstance(state, torch.Tensor):
             state = torch.FloatTensor(state).to(self.device)
 
         action, log_prob = self.actor_net.action(state)
-        value = self.critic_net(state).detach().cpu().numpy()[0]
+        value = self.critic_net(state)
 
         return action, log_prob, value
 
+    def push(self, transitions: list):
+        for i in range(self.configs.num_env):
+            self.buffer[i].push(transitions[i])
+
+        self.buffer_cnt += 1
+
     def train(self):
-        if len(self.buffer) < self.configs.horizon:
+        if self.buffer_cnt < self.configs.horizon:
             return
 
-        batches = self.buffer.all()
-        state = torch.FloatTensor(batches["state"]).to(self.device)
-        action = torch.FloatTensor(batches["action"]).to(self.device)
-        next_state = torch.FloatTensor(batches["next_state"]).to(self.device)
-        reward = torch.FloatTensor(batches["reward"]).to(self.device)
-        done = torch.FloatTensor(batches["done"]).to(self.device)
-        log_prob = torch.FloatTensor(batches["log_prob"]).to(self.device)
-        value = torch.FloatTensor(batches["value"]).to(self.device)
+        state = None
+        action = None
+        log_prob = None
+        advantages = None
+        returns = None
 
-        # generalized advantage estimation
-        with torch.no_grad():
-            advantages = torch.zeros_like(reward).to(self.device)
-            lastgaelam = 0
+        for buffer in self.buffer:
+            batches = buffer.all()
+            _state = torch.FloatTensor(batches["state"]).to(self.device)
+            _action = torch.FloatTensor(batches["action"]).to(self.device)
+            _next_state = torch.FloatTensor(batches["next_state"]).to(self.device)
+            _reward = torch.FloatTensor(batches["reward"]).to(self.device)
+            _done = torch.FloatTensor(batches["done"]).to(self.device)
+            _log_prob = torch.FloatTensor(batches["log_prob"]).to(self.device)
+            _value = torch.FloatTensor(batches["value"]).to(self.device)
 
-            for t in reversed(range(self.configs.horizon)):
-                if t == self.configs.horizon - 1:
-                    next_done = 0
-                    next_value = self.critic_net(next_state[-1])
-                else:
-                    next_done = done[t + 1]
-                    next_value = value[t + 1]
-                delta = reward[t] + self.configs.gamma * next_value * (1 - next_done) - value[t]
-                advantages[t] = lastgaelam = (
-                    delta
-                    + self.configs.gamma * self.configs.gae_lambda * (1 - next_done) * lastgaelam
+            # generalized advantage estimation
+            with torch.no_grad():
+                _advantages = torch.zeros_like(_reward).to(self.device)
+                _lastgaelam = 0
+
+                for t in reversed(range(self.configs.horizon)):
+                    if t == self.configs.horizon - 1:
+                        _next_done = 0
+                        _next_value = self.critic_net(_next_state[-1])
+                    else:
+                        _next_done = _done[t + 1]
+                        _next_value = _value[t + 1]
+
+                    _delta = (
+                        _reward[t] + self.configs.gamma * _next_value * (1 - _next_done) - _value[t]
+                    )
+                    _advantages[t] = _lastgaelam = (
+                        _delta
+                        + self.configs.gamma
+                        * self.configs.gae_lambda
+                        # * (1 - _next_done)
+                        * _lastgaelam
+                    )
+
+                _advantages = _advantages.unsqueeze(-1)
+                _value = _value.unsqueeze(-1)
+                _returns = _advantages + _value
+
+                state = _state if state is None else torch.cat([state, _state])
+                action = _action if action is None else torch.cat([action, _action])
+                log_prob = _log_prob if log_prob is None else torch.cat([log_prob, _log_prob])
+                advantages = (
+                    _advantages if advantages is None else torch.cat([advantages, _advantages])
                 )
-
-            advantages = advantages.unsqueeze(-1)
-            value = value.unsqueeze(-1)
-            returns = advantages + value
+                returns = _returns if returns is None else torch.cat([returns, _returns])
 
         # update networks with mini-batch
         idxs = np.arange(self.configs.horizon)
@@ -240,11 +272,16 @@ class PPO(AgentBase):
 
                 self.optimizer.zero_grad()
                 loss.backward()
-                nn.utils.clip_grad_norm_(self.actor_net.parameters(), 0.5)
-                nn.utils.clip_grad_norm_(self.critic_net.parameters(), 0.5)
+                if self.configs.clip_grad_norm:
+                    nn.utils.clip_grad_norm_(self.actor_net.parameters(), 0.5)
+                    nn.utils.clip_grad_norm_(self.critic_net.parameters(), 0.5)
                 self.optimizer.step()
 
-        self.buffer.clear()
+        for buffer in self.buffer:
+            buffer.clear()
+        self.buffer_cnt = 0
+
+        return loss
 
     def save(self, path: str):
         torch.save(
