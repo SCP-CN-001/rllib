@@ -51,8 +51,8 @@ class PPOActor(nn.Module):
             std = self.log_std.expand_as(mean).exp()
             dist = Normal(mean, std)
         else:
-            probs = self.forward(state)
-            dist = Categorical(probs)
+            policy = self.forward(state)
+            dist = Categorical(policy)
 
         return dist
 
@@ -101,7 +101,7 @@ class PPOConfig(ConfigBase):
         ## hyper-parameters
         ## Here use the PPO hyper-parameters from Mujoco as default values
         self.continuous = True
-        self.num_env = 1
+        self.num_envs = 1
         self.num_epochs = 10
         self.horizon = 2048
         self.batch_size = 64
@@ -126,11 +126,11 @@ class PPOConfig(ConfigBase):
         self.critic_net = PPOCritic
         self.critic_kwargs = {"state_dim": self.state_dim, "hidden_size": 64}
 
-        self.merge_configs(configs)
-
         # implementation details
         self.norm_advantage = True
         self.clip_grad_norm = True
+
+        self.merge_configs(configs)
 
 
 class PPO(AgentBase):
@@ -155,96 +155,130 @@ class PPO(AgentBase):
         )
 
         ## buffer
-        self.buffer_cnt = 0
         self.buffer = [
-            RandomReplayBuffer(self.configs.horizon, extra_items=["log_prob", "value"])
-            for _ in range(self.configs.num_env)
+            RandomReplayBuffer(self.configs.horizon + 1, extra_items=["log_prob", "value"])
+            for _ in range(self.configs.num_envs)
         ]
 
-    def get_action(self, state):
-        if not isinstance(state, torch.Tensor):
-            state = torch.FloatTensor(state).to(self.device)
+    def get_action(self, states):
+        actions = []
+        log_probs = []
+        values = []
 
-        action, log_prob = self.actor_net.action(state)
-        value = self.critic_net(state)
+        for i in range(self.configs.num_envs):
+            state = states[i]
+            if not isinstance(state, torch.Tensor):
+                state = torch.FloatTensor(np.array(state)).to(self.device)
 
-        return action, log_prob, value
+            action, log_prob = self.actor_net.action(state)
+            value = self.critic_net(state)
+            value = value.detach().cpu().numpy()
+
+            actions.append(action)
+            log_probs.append(log_prob)
+            values.append(value)
+
+        return actions, log_probs, values
 
     def push(self, transitions: list):
-        for i in range(self.configs.num_env):
-            self.buffer[i].push(transitions[i])
+        observations, states, actions, log_probs, values = transitions
+        next_states, rewards, terminated, truncated, info = observations
 
-        self.buffer_cnt += 1
+        for i in range(self.configs.num_envs):
+            state = states[i]
+            action = actions[i]
+            next_state = next_states[i]
+            if "_final_observation" in info and info["_final_observation"][i]:
+                next_state = info["final_observation"][i]
+
+            reward = rewards[i]
+            done = int(terminated[i] or truncated[i])
+            log_prob = log_probs[i]
+            value = values[i]
+
+            transition = (state, action, next_state, reward, done, log_prob, value)
+            self.buffer[i].push(transition)
+
+    def _compute_gae(self, rewards, values, dones):
+        """Generalized Advantage Estimation"""
+
+        advantages = np.zeros_like(rewards)
+        old_advantage = 0.0
+
+        for t in reversed(range(len(rewards) - 1)):
+            if dones[t]:
+                old_advantage = 0.0
+
+            delta = rewards[t] + self.configs.gamma * values[t + 1] * (1 - dones[t]) - values[t]
+            old_advantage = (
+                delta
+                + self.configs.gamma * self.configs.gae_lambda * (1 - dones[t]) * old_advantage
+            )
+            advantages[t] = old_advantage
+
+        advantages = np.expand_dims(advantages[:-1], axis=-1)
+        value_targets = advantages + values[:-1]
+
+        return advantages, value_targets
 
     def train(self):
-        if self.buffer_cnt < self.configs.horizon:
+        if len(self.buffer[0]) < self.configs.horizon + 1:
             return
 
-        state = None
-        action = None
-        log_prob = None
-        advantages = None
-        returns = None
+        states, actions, log_probs, advantages, value_targets = None, None, None, None, None
 
         for buffer in self.buffer:
             batches = buffer.all()
-            _state = torch.FloatTensor(batches["state"]).to(self.device)
-            _action = torch.FloatTensor(batches["action"]).to(self.device)
-            _next_state = torch.FloatTensor(batches["next_state"]).to(self.device)
-            _reward = torch.FloatTensor(batches["reward"]).to(self.device)
-            _done = torch.FloatTensor(batches["done"]).to(self.device)
-            _log_prob = torch.FloatTensor(batches["log_prob"]).to(self.device)
-            _value = torch.FloatTensor(batches["value"]).to(self.device)
 
-            # generalized advantage estimation
-            with torch.no_grad():
-                _advantages = torch.zeros_like(_reward).to(self.device)
-                _lastgaelam = 0
+            _advantages, _value_targets = self._compute_gae(
+                batches["reward"], batches["value"], batches["done"]
+            )
 
-                for t in reversed(range(self.configs.horizon)):
-                    if t == self.configs.horizon - 1:
-                        _next_done = 0
-                        _next_value = self.critic_net(_next_state[-1])
-                    else:
-                        _next_done = _done[t + 1]
-                        _next_value = _value[t + 1]
+            states = (
+                batches["state"][:-1]
+                if states is None
+                else np.concatenate((states, batches["state"][:-1]))
+            )
+            actions = (
+                batches["action"][:-1]
+                if actions is None
+                else np.concatenate((actions, batches["action"][:-1]))
+            )
+            log_probs = (
+                batches["log_prob"][:-1]
+                if log_probs is None
+                else np.concatenate((log_probs, batches["log_prob"][:-1]))
+            )
+            advantages = (
+                _advantages if advantages is None else np.concatenate((advantages, _advantages))
+            )
+            value_targets = (
+                _value_targets
+                if value_targets is None
+                else np.concatenate((value_targets, _value_targets))
+            )
 
-                    _delta = (
-                        _reward[t] + self.configs.gamma * _next_value * (1 - _next_done) - _value[t]
-                    )
-                    _advantages[t] = _lastgaelam = (
-                        _delta
-                        + self.configs.gamma
-                        * self.configs.gae_lambda
-                        # * (1 - _next_done)
-                        * _lastgaelam
-                    )
-
-                _advantages = _advantages.unsqueeze(-1)
-                _value = _value.unsqueeze(-1)
-                _returns = _advantages + _value
-
-                state = _state if state is None else torch.cat([state, _state])
-                action = _action if action is None else torch.cat([action, _action])
-                log_prob = _log_prob if log_prob is None else torch.cat([log_prob, _log_prob])
-                advantages = (
-                    _advantages if advantages is None else torch.cat([advantages, _advantages])
-                )
-                returns = _returns if returns is None else torch.cat([returns, _returns])
+        states = torch.FloatTensor(states).to(self.device)
+        actions = torch.FloatTensor(actions).to(self.device)
+        log_probs = torch.FloatTensor(log_probs).to(self.device)
+        advantages = torch.FloatTensor(advantages).to(self.device)
+        value_targets = torch.FloatTensor(value_targets).to(self.device)
 
         # update networks with mini-batch
         idxs = np.arange(self.configs.horizon)
+
         for _ in range(self.configs.num_epochs):
             np.random.shuffle(idxs)
 
             for i in range(0, self.configs.horizon, self.configs.batch_size):
                 minibatch_idx = idxs[i : i + self.configs.batch_size]
-                new_log_prob, entropy = self.actor_net.evaluate(
-                    state[minibatch_idx], action[minibatch_idx]
-                )
-                new_value = self.critic_net(state[minibatch_idx])
 
-                ratios = torch.exp(new_log_prob - log_prob[minibatch_idx])
+                new_log_prob, entropy = self.actor_net.evaluate(
+                    states[minibatch_idx], actions[minibatch_idx]
+                )
+                new_value = self.critic_net(states[minibatch_idx])
+
+                ratios = torch.exp(new_log_prob - log_probs[minibatch_idx])
 
                 advantage_batch = advantages[minibatch_idx]
                 if self.configs.norm_advantage:
@@ -260,7 +294,7 @@ class PPO(AgentBase):
                     * advantage_batch,
                 ).mean()
 
-                loss_vf = F.mse_loss(new_value, returns[minibatch_idx]).mean()
+                loss_vf = F.mse_loss(new_value, value_targets[minibatch_idx]).mean()
 
                 loss_entropy = entropy.mean()
 
@@ -277,11 +311,8 @@ class PPO(AgentBase):
                     nn.utils.clip_grad_norm_(self.critic_net.parameters(), 0.5)
                 self.optimizer.step()
 
-        for buffer in self.buffer:
-            buffer.clear()
-        self.buffer_cnt = 0
-
-        return loss
+        for i in range(self.configs.num_envs):
+            self.buffer[i].clear()
 
     def save(self, path: str):
         torch.save(
