@@ -162,7 +162,7 @@ class PPO(AgentBase):
 
     def get_action(self, states):
         if not isinstance(states, torch.Tensor):
-            states = torch.FloatTensor(np.array(states)).to(self.device)
+            states = torch.FloatTensor(states).to(self.device)
 
         actions, log_probs = self.actor_net.action(states)
         values = self.critic_net(states)
