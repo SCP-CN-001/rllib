@@ -23,10 +23,11 @@ def orthogonal_init(layer, gain: float = np.sqrt(2), constant: float = 0.0):
     return layer
 
 
-class PPOActor(nn.Module):
+class PPOActorCritic(nn.Module):
     def __init__(self, state_dim: int, action_dim: int, hidden_size: int, continuous: bool):
         super().__init__()
 
+        self.action_dim = action_dim
         self.continuous = continuous
 
         self.net = nn.Sequential(
@@ -34,61 +35,48 @@ class PPOActor(nn.Module):
             nn.Tanh(),
             orthogonal_init(nn.Linear(hidden_size, hidden_size)),
             nn.Tanh(),
-            orthogonal_init(nn.Linear(hidden_size, action_dim), 0.01),
-            nn.Tanh() if continuous else nn.Softmax(dim=-1),
+            orthogonal_init(nn.Linear(hidden_size, action_dim + 1), 0.01),
         )
+
+        self.activate = nn.Tanh() if continuous else nn.Softmax(dim=-1)
 
         if self.continuous:
             self.log_std = nn.Parameter(torch.zeros(action_dim))
 
     def forward(self, state: torch.Tensor):
         x = self.net(state)
-        return x
+        x, value = torch.split(x, [self.action_dim, 1], dim=-1)
+        x = self.activate(x)
+        return x, value
 
     def get_dist(self, state: torch.Tensor):
         if self.continuous:
-            mean = self.forward(state)
+            mean, value = self.forward(state)
             std = self.log_std.expand_as(mean).exp()
             dist = Normal(mean, std)
         else:
-            policy = self.forward(state)
+            policy, value = self.forward(state)
             dist = Categorical(policy)
 
-        return dist
+        return dist, value
 
     def action(self, state: torch.Tensor):
-        dist = self.get_dist(state)
+        dist, value = self.get_dist(state)
         action = dist.sample()
         log_prob = dist.log_prob(action)
 
         action = action.detach().cpu().numpy()
         log_prob = log_prob.detach().cpu().numpy()
+        value = value.detach().cpu().numpy()
 
-        return action, log_prob
+        return action, log_prob, value
 
     def evaluate(self, state: torch.Tensor, action: torch.Tensor):
-        dist = self.get_dist(state)
+        dist, value = self.get_dist(state)
         log_prob = dist.log_prob(action)
         entropy = dist.entropy()
 
-        return log_prob, entropy
-
-
-class PPOCritic(nn.Module):
-    def __init__(self, state_dim: int, hidden_size: int) -> None:
-        super().__init__()
-
-        self.net = nn.Sequential(
-            orthogonal_init(nn.Linear(state_dim, hidden_size)),
-            nn.Tanh(),
-            orthogonal_init(nn.Linear(hidden_size, hidden_size)),
-            nn.Tanh(),
-            orthogonal_init(nn.Linear(hidden_size, 1)),
-        )
-
-    def forward(self, state: torch.Tensor):
-        x = self.net(state)
-        return x
+        return log_prob, entropy, value
 
 
 class PPOConfig(ConfigBase):
@@ -111,24 +99,20 @@ class PPOConfig(ConfigBase):
         self.vf_coef = 0.5
         self.entropy_coef = 0.0
 
-        ## actor net
-        self.lr_actor = 3e-4
-        self.actor_net = PPOActor
-        self.actor_kwargs = {
+        ## network
+        self.lr = 3e-4
+        self.network = PPOActorCritic
+        self.network_kwargs = {
             "state_dim": self.state_dim,
             "action_dim": self.action_dim,
             "hidden_size": 64,
             "continuous": self.continuous if "continuous" not in configs else configs["continuous"],
         }
 
-        ## critic net
-        self.lr_critic = 3e-4
-        self.critic_net = PPOCritic
-        self.critic_kwargs = {"state_dim": self.state_dim, "hidden_size": 64}
-
         # implementation details
         self.norm_advantage = True
         self.clip_grad_norm = True
+        self.max_step = None
 
         self.merge_configs(configs)
 
@@ -139,20 +123,11 @@ class PPO(AgentBase):
     def __init__(self, configs: PPOConfig, device: torch.device = torch.device("cpu")):
         super().__init__(configs, device)
 
-        # networks
-        ## actor net
-        self.actor_net = self.configs.actor_net(**self.configs.actor_kwargs).to(self.device)
-
-        ## critic net
-        self.critic_net = self.configs.critic_net(**self.configs.critic_kwargs).to(self.device)
+        # the actor-critic network
+        self.network = self.configs.network(**self.configs.network_kwargs).to(self.device)
 
         ## optimizer
-        self.optimizer = torch.optim.Adam(
-            [
-                {"params": self.actor_net.parameters(), "lr": self.configs.lr_actor, "eps": 1e-5},
-                {"params": self.critic_net.parameters(), "lr": self.configs.lr_critic, "eps": 1e-5},
-            ]
-        )
+        self.optimizer = torch.optim.Adam(self.network.parameters(), lr=self.configs.lr, eps=1e-5)
 
         ## buffer
         self.buffer = [
@@ -160,13 +135,15 @@ class PPO(AgentBase):
             for _ in range(self.configs.num_envs)
         ]
 
+        # self.cnt_steps = 0
+        # self.current_epsilon = self.configs.clip_epsilon
+        # self.current_lr = self.configs.lr
+
     def get_action(self, states):
         if not isinstance(states, torch.Tensor):
             states = torch.FloatTensor(states).to(self.device)
 
-        actions, log_probs = self.actor_net.action(states)
-        values = self.critic_net(states)
-        values = values.detach().cpu().numpy()
+        actions, log_probs, values = self.network.action(states)
 
         return actions, log_probs, values
 
@@ -254,7 +231,7 @@ class PPO(AgentBase):
         advantages = torch.FloatTensor(advantages).to(self.device)
         value_targets = torch.FloatTensor(value_targets).to(self.device)
 
-        # update networks with mini-batch
+        # update network with mini-batch
         idxs = np.arange(self.configs.horizon)
 
         for _ in range(self.configs.num_epochs):
@@ -263,10 +240,9 @@ class PPO(AgentBase):
             for i in range(0, self.configs.horizon, self.configs.batch_size):
                 minibatch_idx = idxs[i : i + self.configs.batch_size]
 
-                new_log_prob, entropy = self.actor_net.evaluate(
+                new_log_prob, entropy, new_value = self.network.evaluate(
                     states[minibatch_idx], actions[minibatch_idx]
                 )
-                new_value = self.critic_net(states[minibatch_idx])
 
                 ratios = torch.exp(new_log_prob - log_probs[minibatch_idx])
 
@@ -297,8 +273,7 @@ class PPO(AgentBase):
                 self.optimizer.zero_grad()
                 loss.backward()
                 if self.configs.clip_grad_norm:
-                    nn.utils.clip_grad_norm_(self.actor_net.parameters(), 0.5)
-                    nn.utils.clip_grad_norm_(self.critic_net.parameters(), 0.5)
+                    nn.utils.clip_grad_norm_(self.network.parameters(), 0.5)
                 self.optimizer.step()
 
         for i in range(self.configs.num_envs):
@@ -307,8 +282,7 @@ class PPO(AgentBase):
     def save(self, path: str):
         torch.save(
             {
-                "actor_net": self.actor_net.state_dict(),
-                "critic_net": self.critic_net.state_dict(),
+                "network": self.network.state_dict(),
                 "optimizer": self.optimizer.state_dict(),
             },
             path,
@@ -316,6 +290,5 @@ class PPO(AgentBase):
 
     def load(self, path: str, map_location=None):
         checkpoint = torch.load(path, map_location=map_location)
-        self.actor_net.load_state_dict(checkpoint["actor_net"])
-        self.critic_net.load_state_dict(checkpoint["critic_net"])
+        self.network.load_state_dict(checkpoint["network"])
         self.optimizer.load_state_dict(checkpoint["optimizer"])
