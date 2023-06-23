@@ -215,7 +215,6 @@ class PPO(AgentBase):
             value_targets[t] = old_value_target
 
         advantages = np.expand_dims(advantages[:-1], axis=-1)
-        # value_targets = np.expand_dims(advantages, axis=-1) + values[:-1]
         value_targets = np.expand_dims(value_targets[:-1], axis=-1)
 
         return advantages, value_targets
@@ -279,7 +278,6 @@ class PPO(AgentBase):
 
                 ratios = torch.exp(new_log_prob - log_probs[minibatch_idx])
 
-
                 advantage_batch = advantages[minibatch_idx]
                 if self.configs.norm_advantage:
                     advantage_batch = (advantage_batch - advantage_batch.mean()) / (
@@ -303,8 +301,6 @@ class PPO(AgentBase):
                     - self.configs.vf_coef * loss_vf
                     + self.configs.entropy_coef * loss_entropy
                 )
-
-                # print(loss_clip.mean().item(), loss_vf.mean().item(), loss_entropy.mean().item())
 
                 self.optimizer.zero_grad()
                 loss.backward()
