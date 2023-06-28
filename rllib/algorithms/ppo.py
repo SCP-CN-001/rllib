@@ -198,9 +198,6 @@ class PPO(AgentBase):
         advantages = np.zeros_like(rewards)
         old_advantage = 0.0
 
-        value_targets = np.zeros_like(rewards)
-        old_value_target = values[-1]
-
         for t in reversed(range(len(rewards) - 1)):
             if dones[t]:
                 old_advantage = 0.0
@@ -209,13 +206,8 @@ class PPO(AgentBase):
             old_advantage = delta + self.configs.gamma * self.configs.gae_lambda * old_advantage
             advantages[t] = old_advantage
 
-            old_value_target = rewards[t] + self.configs.gamma * old_value_target * (
-                1 - dones[t + 1]
-            )
-            value_targets[t] = old_value_target
-
         advantages = np.expand_dims(advantages[:-1], axis=-1)
-        value_targets = np.expand_dims(value_targets[:-1], axis=-1)
+        value_targets = advantages + values[:-1]
 
         return advantages, value_targets
 
@@ -310,7 +302,7 @@ class PPO(AgentBase):
                 self.optimizer.step()
 
         if self.configs.max_step is not None:
-            self.current_step += 1
+            self.current_step += self.configs.horizon
             alpha = self.current_step / self.configs.max_step
             self.current_epsilon = self.configs.clip_epsilon * (1 - alpha)
             for g in self.optimizer.param_groups:
