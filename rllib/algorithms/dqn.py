@@ -140,13 +140,16 @@ class DQN(AgentBase):
 
     def save(self, path: str):
         torch.save(
-            {"policy_net": self.policy_net.state_dict(), "optimizer": self.optimizer.state_dict()},
+            {
+                "policy_net": self.policy_net.state_dict(),
+                "target_net": self.target_net.state_dict(),
+                "optimizer": self.optimizer.state_dict(),
+            },
             path,
         )
 
     def load(self, path: str):
         checkpoint = torch.load(path)
         self.policy_net.load_state_dict(checkpoint["policy_net"])
+        self.target_net.load_state_dict(checkpoint["target_net"])
         self.optimizer.load_state_dict(checkpoint["optimizer"])
-
-        self.target_net = deepcopy(self.policy_net)
