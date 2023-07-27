@@ -285,6 +285,9 @@ class Rainbow(AgentBase):
             {
                 "policy_net": self.policy_net.state_dict(),
                 "target_net": self.target_net.state_dict(),
+                "optimizer": self.optimizer.state_dict(),
+                "support": self.support,
+                "configs": self.configs,
             },
             path,
         )
@@ -293,5 +296,8 @@ class Rainbow(AgentBase):
         checkpoint = torch.load(path)
         self.policy_net.load_state_dict(checkpoint["policy_net"])
         self.target_net.load_state_dict(checkpoint["target_net"])
+        self.optimizer.load_state_dict(checkpoint["optimizer"])
 
-        self.target_net = deepcopy(self.policy_net)
+        for key in ["support", "configs"]:
+            if key in checkpoint:
+                setattr(self, key, checkpoint[key])

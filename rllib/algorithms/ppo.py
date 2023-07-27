@@ -319,6 +319,9 @@ class PPO(AgentBase):
                 "actor_net": self.actor_net.state_dict(),
                 "critic_net": self.critic_net.state_dict(),
                 "optimizer": self.optimizer.state_dict(),
+                "current_step": self.current_step,
+                "current_epsilon": self.current_epsilon,
+                "configs": self.configs,
             },
             path,
         )
@@ -328,3 +331,7 @@ class PPO(AgentBase):
         self.actor_net.load_state_dict(checkpoint["actor_net"])
         self.critic_net.load_state_dict(checkpoint["critic_net"])
         self.optimizer.load_state_dict(checkpoint["optimizer"])
+
+        for key in ["current_step", "current_epsilon", "configs"]:
+            if key in checkpoint:
+                setattr(self, key, checkpoint[key])
