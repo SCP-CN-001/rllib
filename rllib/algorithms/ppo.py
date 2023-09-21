@@ -108,6 +108,7 @@ class PPOConfig(ConfigBase):
         self.lr = 3e-4
         self.gamma = 0.99
         self.gae_lambda = 0.95
+        self.adam_epsilon = 1e-5
         self.clip_epsilon = 0.2
         self.vf_coef = 0.5
         self.entropy_coef = 0.0
@@ -126,8 +127,8 @@ class PPOConfig(ConfigBase):
         self.critic_kwargs = {"state_dim": self.state_dim, "hidden_size": 64}
 
         # implementation details
-        self.norm_advantage = True
-        self.clip_grad_norm = True
+        self.adv_norm = True
+        self.grad_clip_norm = True
         self.max_step = None
 
         self.merge_configs(configs)
@@ -152,8 +153,16 @@ class PPO(AgentBase):
         ## optimizer
         self.optimizer = torch.optim.Adam(
             [
-                {"params": self.actor_net.parameters(), "lr": self.configs.lr, "eps": 1e-5},
-                {"params": self.critic_net.parameters(), "lr": self.configs.lr, "eps": 1e-5},
+                {
+                    "params": self.actor_net.parameters(),
+                    "lr": self.configs.lr,
+                    "eps": self.configs.adam_epsilon,
+                },
+                {
+                    "params": self.critic_net.parameters(),
+                    "lr": self.configs.lr,
+                    "eps": self.configs.adam_epsilon,
+                },
             ]
         )
 
@@ -271,7 +280,7 @@ class PPO(AgentBase):
                 ratios = torch.exp(new_log_prob - log_probs[minibatch_idx])
 
                 advantage_batch = advantages[minibatch_idx]
-                if self.configs.norm_advantage:
+                if self.configs.adv_norm:
                     advantage_batch = (advantage_batch - advantage_batch.mean()) / (
                         advantage_batch.std() + 1e-8
                     )
@@ -296,9 +305,9 @@ class PPO(AgentBase):
 
                 self.optimizer.zero_grad()
                 loss.backward()
-                if self.configs.clip_grad_norm:
-                    nn.utils.clip_grad_norm_(self.actor_net.parameters(), 0.5)
-                    nn.utils.clip_grad_norm_(self.critic_net.parameters(), 0.5)
+                if self.configs.grad_clip_norm:
+                    nn.utils.grad_clip_norm_(self.actor_net.parameters(), 0.5)
+                    nn.utils.grad_clip_norm_(self.critic_net.parameters(), 0.5)
                 self.optimizer.step()
 
         if self.configs.max_step is not None:
