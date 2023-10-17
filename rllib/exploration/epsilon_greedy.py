@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# @File: epsilon_greedy.py
+# @Description: This script implements the epsilon greedy exploration, which is first raised in the paper "Playing Atari with Deep Reinforcement Learning".
+# @Time: 2023/10/17
+# @Author: Yueyuan Li
+
 import random
 
 

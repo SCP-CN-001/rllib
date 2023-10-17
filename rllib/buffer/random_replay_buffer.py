@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# @File: random_replay_buffer.py
+# @Description: This script implements the random replay buffer.
+# @Time: 2023/10/17
+# @Author: Yueyuan Li
+
 import numpy as np
 
 from rllib.interface.buffer_base import BufferBase

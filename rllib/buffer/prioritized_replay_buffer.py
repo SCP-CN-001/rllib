@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# @File: prioritized_replay_buffer.py
+# @Description: This script implements the prioritized replay buffer following the paper "Prioritized Experience Replay".
+# @Time: 2023/10/17
+# @Author: Yueyuan Li
+
 import numpy as np
 
 from rllib.interface import BufferBase

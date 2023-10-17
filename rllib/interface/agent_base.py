@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# @File: agent_base.py
+# @Description: This script defines the base agent interface for all RL algorithms.
+# @Time: 2023/10/17
+# @Author: Yueyuan Li
+
 from abc import ABC, abstractmethod
 
 

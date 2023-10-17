@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# @File: ornstein_uhlenbeck_noise.py
+# @Description: This script implements the Ornstein-Uhlenbeck noise, which is first raised in the paper "Continuous control with deep reinforcement learning".
+# @Time: 2023/10/17
+# @Author: Yueyuan Li
+
 import numpy as np
 
 

@@ -1,7 +1,20 @@
-import numpy as np
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# @File: observation_wrapper.py
+# @Description: This script implements some common observation wrappers.
+# @Time: 2023/10/17
+# @Author: Yueyuan Li
+
+try:
+    import cv2
+except ImportError:
+    raise ImportError(
+        "opencv-python package is required for this functionality. Run `pip install opencv-python` to install."
+    )
+
 import gymnasium as gym
 from gymnasium.spaces import Box
-
+import numpy as np
 
 class GrayscaleObservationWrapper(gym.ObservationWrapper):
     def __init__(self, env: gym.Env):
@@ -13,8 +26,6 @@ class GrayscaleObservationWrapper(gym.ObservationWrapper):
         )
 
     def observation(self, observation):
-        import cv2
-
         grayscale_observation = cv2.cvtColor(observation, cv2.COLOR_RGB2GRAY)
         grayscale_observation = np.expand_dims(grayscale_observation, -1)
         observation = np.dstack([observation, grayscale_observation])
