@@ -272,19 +272,27 @@ class PPO(AgentBase):
             for i in range(0, self.configs.horizon, self.configs.batch_size):
                 minibatch_idx = idxs[i : i + self.configs.batch_size]
 
-                new_log_prob, entropy = self.actor_net.evaluate(
-                    states[minibatch_idx], actions[minibatch_idx]
-                )
-                new_value = self.critic_net(states[minibatch_idx])
-
-                ratios = torch.exp(new_log_prob - log_probs[minibatch_idx])
-
                 advantage_batch = advantages[minibatch_idx]
                 if self.configs.adv_norm:
                     advantage_batch = (advantage_batch - advantage_batch.mean()) / (
                         advantage_batch.std() + 1e-8
                     )
 
+                new_log_prob, entropy = self.actor_net.evaluate(
+                    states[minibatch_idx], actions[minibatch_idx]
+                )
+                new_value = self.critic_net(states[minibatch_idx])
+
+                if (
+                    advantage_batch.shape != log_probs[minibatch_idx].shape
+                    and log_probs[minibatch_idx].shape[1] > advantage_batch.shape[1]
+                ):
+                    old_log_prob = torch.sum(
+                        log_probs[minibatch_idx], dim=1, keepdim=True
+                    )
+                    new_log_prob = torch.sum(new_log_prob, dim=1, keepdim=True)
+
+                ratios = torch.exp(new_log_prob - old_log_prob)
                 ratios = torch.reshape(ratios, advantage_batch.shape)
 
                 loss_clip = torch.min(
@@ -306,8 +314,8 @@ class PPO(AgentBase):
                 self.optimizer.zero_grad()
                 loss.backward()
                 if self.configs.gradient_clip:
-                    nn.utils.grad_clip_norm_(self.actor_net.parameters(), 0.5)
-                    nn.utils.grad_clip_norm_(self.critic_net.parameters(), 0.5)
+                    nn.utils.clip_grad_norm_(self.actor_net.parameters(), 0.5)
+                    nn.utils.clip_grad_norm_(self.critic_net.parameters(), 0.5)
                 self.optimizer.step()
 
         if self.configs.max_step is not None:
