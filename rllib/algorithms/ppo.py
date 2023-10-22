@@ -128,7 +128,7 @@ class PPOConfig(ConfigBase):
 
         # implementation details
         self.adv_norm = True
-        self.grad_clip_norm = True
+        self.gradient_clip = True
         self.max_step = None
 
         self.merge_configs(configs)
@@ -191,7 +191,7 @@ class PPO(AgentBase):
             action = actions[i]
             next_state = next_states[i]
             if "_final_observation" in info and info["_final_observation"][i]:
-                next_state = info["final_observation"][i]
+                next_state = info["_final_observation"][i]
 
             reward = rewards[i]
             done = int(terminated[i] or truncated[i])
@@ -305,7 +305,7 @@ class PPO(AgentBase):
 
                 self.optimizer.zero_grad()
                 loss.backward()
-                if self.configs.grad_clip_norm:
+                if self.configs.gradient_clip:
                     nn.utils.grad_clip_norm_(self.actor_net.parameters(), 0.5)
                     nn.utils.grad_clip_norm_(self.critic_net.parameters(), 0.5)
                 self.optimizer.step()
@@ -319,8 +319,6 @@ class PPO(AgentBase):
 
         for i in range(self.configs.num_envs):
             self.buffer[i].clear()
-
-        return loss
 
     def save(self, path: str):
         torch.save(

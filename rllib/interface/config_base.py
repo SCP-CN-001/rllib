@@ -54,12 +54,16 @@ class ConfigBase:
                 self.state_dim = self.state_space.shape[0]
             elif isinstance(self.state_space, gym.spaces.Discrete):
                 self.state_dim = self.state_space.n
+        else:
+            self.state_dim = configs["state_dim"]
 
         if "action_dim" not in configs.keys():
             if isinstance(self.action_space, gym.spaces.Box):
                 self.action_dim = self.action_space.shape[0]
             elif isinstance(self.action_space, gym.spaces.Discrete):
                 self.action_dim = self.action_space.n
+        else:
+            self.action_dim = configs["action_dim"]
 
     def merge_configs(self, configs: dict):
         """Merge the custom configs for a specific algorithm

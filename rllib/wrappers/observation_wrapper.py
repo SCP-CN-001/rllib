@@ -16,6 +16,7 @@ import gymnasium as gym
 from gymnasium.spaces import Box
 import numpy as np
 
+
 class GrayscaleObservationWrapper(gym.ObservationWrapper):
     def __init__(self, env: gym.Env):
         super().__init__(env)
