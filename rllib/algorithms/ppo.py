@@ -287,9 +287,7 @@ class PPO(AgentBase):
                     advantage_batch.shape != log_probs[minibatch_idx].shape
                     and log_probs[minibatch_idx].shape[1] > advantage_batch.shape[1]
                 ):
-                    old_log_prob = torch.sum(
-                        log_probs[minibatch_idx], dim=1, keepdim=True
-                    )
+                    old_log_prob = torch.sum(log_probs[minibatch_idx], dim=1, keepdim=True)
                     new_log_prob = torch.sum(new_log_prob, dim=1, keepdim=True)
 
                 ratios = torch.exp(new_log_prob - old_log_prob)
