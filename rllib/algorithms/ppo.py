@@ -326,6 +326,9 @@ class PPO(AgentBase):
         for i in range(self.configs.num_envs):
             self.buffer[i].clear()
 
+        if self.configs.debug:
+            return loss.item(), loss_clip.item(), loss_vf.item(), loss_entropy.item()
+
     def save(self, path: str):
         torch.save(
             {

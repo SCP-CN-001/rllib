@@ -15,6 +15,7 @@ class ConfigBase:
         # runtime
         self.n_epoch = None
         self.n_initial_exploration_steps = None
+        self.debug = False
 
         # environment
         self.state_space = None

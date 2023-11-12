@@ -204,6 +204,9 @@ class DDPG(AgentBase):
         self.soft_update(self.actor_target_net, self.actor_net)
         self.soft_update(self.critic_target_net, self.critic_net)
 
+        if self.configs.debug:
+            return actor_loss.item(), critic_loss.item()
+
     def save(self, path: str):
         torch.save(
             {

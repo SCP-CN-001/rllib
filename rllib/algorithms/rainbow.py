@@ -280,6 +280,9 @@ class Rainbow(AgentBase):
         self.policy_net.reset_noise()
         self.target_net.reset_noise()
 
+        if self.configs.debug:
+            return loss.item()
+
     def save(self, path: str):
         torch.save(
             {

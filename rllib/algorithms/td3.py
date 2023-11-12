@@ -205,6 +205,9 @@ class TD3(AgentBase):
             self.soft_update(self.critic_target_net1, self.critic_net1)
             self.soft_update(self.critic_target_net2, self.critic_net2)
 
+        if self.configs.debug:
+            return q1_loss.item(), q2_loss.item(), actor_loss.item()
+
     def save(self, path: str):
         torch.save(
             {

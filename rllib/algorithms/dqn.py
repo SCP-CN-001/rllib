@@ -138,6 +138,9 @@ class DQN(AgentBase):
         if self.update_cnt % self.configs.target_update_freq == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
+        if self.configs.debug:
+            return loss.item()
+
     def save(self, path: str):
         torch.save(
             {
