@@ -190,6 +190,7 @@ class SAC(AgentBase):
             )
 
     def train(self):
+        # ISSUE: different return type (Line 195 and Line 253)
         if len(self.buffer) < self.configs.batch_size:
             return
 
