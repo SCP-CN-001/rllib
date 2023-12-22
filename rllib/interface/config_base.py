@@ -43,28 +43,31 @@ class ConfigBase:
 
     def set_env(self, configs):
         """Set the environment related configs"""
+        # set dimension directly without specifying space
+        # space can be set in merge_configs() if necessary
 
-        for key in ["state_space", "action_space"]:
-            if key in configs:
-                setattr(self, key, configs[key])
-            else:
-                raise AttributeError("[%s] is not defined!" % key)
-
-        if "state_dim" not in configs.keys():
+        if "state_dim" in configs.keys():
+            self.state_dim = configs["state_dim"]
+        elif "state_space" in configs.keys():
+            self.state_space = configs["state_space"]
             if isinstance(self.state_space, gym.spaces.Box):
                 self.state_dim = self.state_space.shape[0]
             elif isinstance(self.state_space, gym.spaces.Discrete):
                 self.state_dim = self.state_space.n
         else:
-            self.state_dim = configs["state_dim"]
+            raise AttributeError("State space or its dimension is not defined!")
 
-        if "action_dim" not in configs.keys():
+        if "action_dim" in configs.keys():
+            self.action_dim = configs["action_dim"]
+        elif "state_space" in configs.keys():
+            self.action_space = configs["action_space"]
             if isinstance(self.action_space, gym.spaces.Box):
                 self.action_dim = self.action_space.shape[0]
             elif isinstance(self.action_space, gym.spaces.Discrete):
                 self.action_dim = self.action_space.n
         else:
-            self.action_dim = configs["action_dim"]
+            raise AttributeError("Action space or its dimension is not defined!")
+
 
     def merge_configs(self, configs: dict):
         """Merge the custom configs for a specific algorithm
