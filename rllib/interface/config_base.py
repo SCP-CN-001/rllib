@@ -68,7 +68,6 @@ class ConfigBase:
         else:
             raise AttributeError("Action space or its dimension is not defined!")
 
-
     def merge_configs(self, configs: dict):
         """Merge the custom configs for a specific algorithm
 
