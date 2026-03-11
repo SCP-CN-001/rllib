@@ -343,7 +343,7 @@ class PPO(AgentBase):
         )
 
     def load(self, path: str, map_location=None):
-        checkpoint = torch.load(path, map_location=map_location)
+        checkpoint = torch.load(path, map_location=map_location, weights_only=False)
         self.actor_net.load_state_dict(checkpoint["actor_net"])
         self.critic_net.load_state_dict(checkpoint["critic_net"])
         self.optimizer.load_state_dict(checkpoint["optimizer"])
